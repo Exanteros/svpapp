@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Key Fix</title>
+    <style>
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin: 20px 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        button.danger {
+            background-color: #e74c3c;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .success {
+            color: #27ae60;
+        }
+        .error {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 API-Key Fix Tool</h1>
+    
+    <div class="card">
+        <h2>1. API-Schlüssel einrichten</h2>
+        <p>Klicken Sie auf den Button, um den API-Schlüssel (svp-admin-2025-secure-key) im localStorage und als Cookie zu speichern.</p>
+        <button id="fix-api-key">API-Schlüssel einrichten</button>
+        <div id="key-result"></div>
+    </div>
+    
+    <div class="card">
+        <h2>2. Fetch-Interceptor aktivieren</h2>
+        <p>Überschreibt die Fetch-API, um automatisch den API-Schlüssel zu allen API-Anfragen hinzuzufügen.</p>
+        <button id="activate-interceptor">Fetch-Interceptor aktivieren</button>
+        <div id="interceptor-result"></div>
+    </div>
+    
+    <div class="card">
+        <h2>3. API-Test durchführen</h2>
+        <p>Testet die Verbindung zur API mit dem eingerichteten Schlüssel.</p>
+        <button id="test-admin-api">Admin-API testen</button>
+        <button id="test-helfer-api">Helfer-API testen</button>
+        <pre id="api-result">Noch kein Test durchgeführt.</pre>
+    </div>
+    
+    <div class="card">
+        <h2>📊 Status</h2>
+        <button id="check-status">Status prüfen</button>
+        <pre id="status-result">Klicken Sie auf "Status prüfen"</pre>
+    </div>
+    
+    <div class="card">
+        <h2>🧹 Aufräumen</h2>
+        <button id="clear-all" class="danger">Alle API-Schlüssel löschen</button>
+        <div id="clear-result"></div>
+    </div>
+
+    <script>
+        const API_KEY = 'svp-admin-2025-secure-key';
+        
+        // API-Schlüssel einrichten
+        document.getElementById('fix-api-key').addEventListener('click', function() {
+            try {
+                // Im localStorage speichern
+                localStorage.setItem('svp-admin-key', API_KEY);
+                
+                // Als Cookie setzen
+                document.cookie = `svp-admin-key=${API_KEY};path=/;max-age=86400`;
+                
+                const resultEl = document.getElementById('key-result');
+                resultEl.innerHTML = `<p class="success">✅ API-Schlüssel wurde erfolgreich gespeichert!</p>`;
+            } catch (error) {
+                const resultEl = document.getElementById('key-result');
+                resultEl.innerHTML = `<p class="error">❌ Fehler: ${error.message}</p>`;
+            }
+        });
+        
+        // Fetch-Interceptor aktivieren
+        document.getElementById('activate-interceptor').addEventListener('click', function() {
+            try {
+                const originalFetch = window.fetch;
+                window.fetch = function(url, options = {}) {
+                    // Nur für API-Anfragen
+                    if (url.toString().includes('/api/')) {
+                        options = options || {};
+                        options.headers = options.headers || {};
+                        
+                        // API-Schlüssel hinzufügen
+                        if (!options.headers['X-API-Key'] && !options.headers['x-api-key']) {
+                            console.log('Füge API-Schlüssel zu Anfrage hinzu:', url);
+                            options.headers['X-API-Key'] = API_KEY;
+                        }
+                    }
+                    
+                    return originalFetch(url, options);
+                };
+                
+                const resultEl = document.getElementById('interceptor-result');
+                resultEl.innerHTML = `<p class="success">✅ Fetch-Interceptor wurde aktiviert!</p>`;
+            } catch (error) {
+                const resultEl = document.getElementById('interceptor-result');
+                resultEl.innerHTML = `<p class="error">❌ Fehler: ${error.message}</p>`;
+            }
+        });
+        
+        // Admin-API testen
+        document.getElementById('test-admin-api').addEventListener('click', async function() {
+            const resultEl = document.getElementById('api-result');
+            resultEl.textContent = 'Teste Admin-API...';
+            
+            try {
+                const response = await fetch('/api/admin', {
+                    headers: {
+                        'X-API-Key': API_KEY
+                    }
+                });
+                
+                const data = await response.json();
+                
+                resultEl.textContent = `Admin-API Antwort (Status ${response.status}):\n${JSON.stringify(data, null, 2)}`;
+                
+                if (response.ok) {
+                    resultEl.className = 'success';
+                } else {
+                    resultEl.className = 'error';
+                }
+            } catch (error) {
+                resultEl.textContent = `Fehler: ${error.message}`;
+                resultEl.className = 'error';
+            }
+        });
+        
+        // Helfer-API testen
+        document.getElementById('test-helfer-api').addEventListener('click', async function() {
+            const resultEl = document.getElementById('api-result');
+            resultEl.textContent = 'Teste Helfer-API...';
+            
+            try {
+                const response = await fetch('/api/helfer', {
+                    headers: {
+                        'X-API-Key': API_KEY
+                    }
+                });
+                
+                const data = await response.json();
+                
+                resultEl.textContent = `Helfer-API Antwort (Status ${response.status}):\n${JSON.stringify(data, null, 2)}`;
+                
+                if (response.ok) {
+                    resultEl.className = 'success';
+                } else {
+                    resultEl.className = 'error';
+                }
+            } catch (error) {
+                resultEl.textContent = `Fehler: ${error.message}`;
+                resultEl.className = 'error';
+            }
+        });
+        
+        // Status prüfen
+        document.getElementById('check-status').addEventListener('click', function() {
+            try {
+                const resultEl = document.getElementById('status-result');
+                
+                // LocalStorage prüfen
+                const localStorageKey = localStorage.getItem('svp-admin-key');
+                
+                // Cookies prüfen
+                const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+                const apiKeyCookie = cookies.find(cookie => cookie.startsWith('svp-admin-key='));
+                
+                // Fetch-Interceptor prüfen
+                const fetchIntercepted = window.fetch.toString().includes('API-Schlüssel');
+                
+                const status = {
+                    localStorage: {
+                        apiKey: localStorageKey || 'nicht gesetzt'
+                    },
+                    cookies: {
+                        apiKey: apiKeyCookie ? apiKeyCookie.split('=')[1] : 'nicht gesetzt',
+                        allCookies: cookies
+                    },
+                    fetchIntercepted: fetchIntercepted ? 'Ja' : 'Nein',
+                    sessionStorage: {
+                        content: { ...sessionStorage }
+                    }
+                };
+                
+                resultEl.textContent = JSON.stringify(status, null, 2);
+            } catch (error) {
+                const resultEl = document.getElementById('status-result');
+                resultEl.textContent = `Fehler: ${error.message}`;
+                resultEl.className = 'error';
+            }
+        });
+        
+        // Alles löschen
+        document.getElementById('clear-all').addEventListener('click', function() {
+            try {
+                // LocalStorage leeren
+                localStorage.removeItem('svp-admin-key');
+                localStorage.removeItem('svp-session-token');
+                
+                // Cookies löschen
+                document.cookie = 'svp-admin-key=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                document.cookie = 'svp-session-token=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                
+                const resultEl = document.getElementById('clear-result');
+                resultEl.innerHTML = `<p class="success">✅ Alle Authentifizierungsdaten wurden gelöscht!</p>`;
+            } catch (error) {
+                const resultEl = document.getElementById('clear-result');
+                resultEl.innerHTML = `<p class="error">❌ Fehler: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

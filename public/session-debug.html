@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Session Status Debug</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button.danger {
+            background-color: #e74c3c;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Session Status Debug</h1>
+    
+    <div class="container">
+        <h2>Client-Seitige Authentifizierung</h2>
+        <div>
+            <button id="check-auth-btn">Authentifizierung prüfen</button>
+            <button id="clear-auth-btn" class="danger">Authentifizierung löschen</button>
+        </div>
+        <pre id="auth-status">Status wird geladen...</pre>
+    </div>
+    
+    <div class="container">
+        <h2>Server-Seitige Session</h2>
+        <div>
+            <button id="check-session-btn">Session-Status prüfen</button>
+        </div>
+        <pre id="session-status">Status wird geladen...</pre>
+    </div>
+    
+    <div class="container">
+        <h2>API Test</h2>
+        <div>
+            <button id="test-admin-api-btn">Admin API testen</button>
+            <button id="test-helfer-api-btn">Helfer API testen</button>
+        </div>
+        <pre id="api-response">Noch kein API-Test durchgeführt</pre>
+    </div>
+    
+    <div class="container">
+        <h2>Login Simulation</h2>
+        <div>
+            <input type="text" id="api-key-input" value="svp-admin-2025-secure-key" placeholder="API Key eingeben" style="padding: 8px; width: 300px; margin-right: 10px; margin-bottom: 10px;">
+            <button id="login-btn">Login simulieren</button>
+        </div>
+        <pre id="login-status">Noch kein Login durchgeführt</pre>
+    </div>
+
+    <script>
+        // Client-seitige Authentifizierung prüfen
+        document.getElementById('check-auth-btn').addEventListener('click', function() {
+            const statusElement = document.getElementById('auth-status');
+            statusElement.textContent = 'Prüfe Authentifizierung...';
+            
+            try {
+                const authData = {
+                    apiKey: {
+                        localStorage: localStorage.getItem('svp-admin-key') || 'nicht gesetzt',
+                        cookies: document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('svp-admin-key=')) || 'nicht gesetzt'
+                    },
+                    sessionToken: {
+                        value: localStorage.getItem('svp-session-token') || 'nicht gesetzt',
+                        expires: localStorage.getItem('svp-session-token-expires') || 'nicht gesetzt',
+                        isExpired: localStorage.getItem('svp-session-token-expires') ? 
+                            Date.now() > parseInt(localStorage.getItem('svp-session-token-expires')) : 
+                            'unbekannt'
+                    },
+                    cookiesRaw: document.cookie
+                };
+                
+                statusElement.textContent = JSON.stringify(authData, null, 2);
+            } catch (error) {
+                statusElement.textContent = 'Fehler: ' + error.message;
+                statusElement.classList.add('error');
+            }
+        });
+        
+        // Authentifizierung löschen
+        document.getElementById('clear-auth-btn').addEventListener('click', function() {
+            const statusElement = document.getElementById('auth-status');
+            
+            try {
+                // LocalStorage löschen
+                localStorage.removeItem('svp-admin-key');
+                localStorage.removeItem('svp-session-token');
+                localStorage.removeItem('svp-session-token-expires');
+                
+                // SessionStorage löschen
+                sessionStorage.removeItem('svp-admin-key');
+                sessionStorage.removeItem('svp-session-token');
+                
+                // Cookies löschen
+                document.cookie = 'svp-admin-key=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+                document.cookie = 'svp-session-token=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+                
+                statusElement.textContent = 'Alle Authentifizierungsdaten wurden gelöscht!';
+                statusElement.classList.add('success');
+            } catch (error) {
+                statusElement.textContent = 'Fehler: ' + error.message;
+                statusElement.classList.add('error');
+            }
+        });
+        
+        // Server-seitigen Session-Status prüfen
+        document.getElementById('check-session-btn').addEventListener('click', async function() {
+            const statusElement = document.getElementById('session-status');
+            statusElement.textContent = 'Prüfe Session-Status...';
+            
+            try {
+                const response = await fetch('/api/auth/session-status', {
+                    headers: {
+                        'X-Session-Token': localStorage.getItem('svp-session-token') || '',
+                        'X-API-Key': localStorage.getItem('svp-admin-key') || '',
+                    }
+                });
+                
+                const data = await response.json();
+                statusElement.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    statusElement.classList.add('success');
+                } else {
+                    statusElement.classList.add('error');
+                }
+            } catch (error) {
+                statusElement.textContent = 'Fehler: ' + error.message;
+                statusElement.classList.add('error');
+            }
+        });
+        
+        // Admin API testen
+        document.getElementById('test-admin-api-btn').addEventListener('click', async function() {
+            const responseElement = document.getElementById('api-response');
+            responseElement.textContent = 'Teste Admin API...';
+            
+            try {
+                const sessionToken = localStorage.getItem('svp-session-token');
+                const apiKey = localStorage.getItem('svp-admin-key');
+                
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                
+                if (sessionToken) {
+                    headers['X-Session-Token'] = sessionToken;
+                }
+                
+                if (apiKey) {
+                    headers['X-API-Key'] = apiKey;
+                }
+                
+                const response = await fetch('/api/admin', {
+                    headers
+                });
+                
+                const data = await response.json();
+                
+                responseElement.textContent = `Admin API Antwort (Status ${response.status}):\n` + 
+                                             JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    responseElement.classList.add('success');
+                    responseElement.classList.remove('error');
+                } else {
+                    responseElement.classList.add('error');
+                    responseElement.classList.remove('success');
+                }
+            } catch (error) {
+                responseElement.textContent = 'Fehler: ' + error.message;
+                responseElement.classList.add('error');
+                responseElement.classList.remove('success');
+            }
+        });
+        
+        // Helfer API testen
+        document.getElementById('test-helfer-api-btn').addEventListener('click', async function() {
+            const responseElement = document.getElementById('api-response');
+            responseElement.textContent = 'Teste Helfer API...';
+            
+            try {
+                const sessionToken = localStorage.getItem('svp-session-token');
+                const apiKey = localStorage.getItem('svp-admin-key');
+                
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                
+                if (sessionToken) {
+                    headers['X-Session-Token'] = sessionToken;
+                }
+                
+                if (apiKey) {
+                    headers['X-API-Key'] = apiKey;
+                }
+                
+                console.log('API Anfrage mit Headers:', headers);
+                
+                const response = await fetch('/api/helfer', {
+                    headers
+                });
+                
+                const data = await response.json();
+                
+                responseElement.textContent = `Helfer API Antwort (Status ${response.status}):\n` + 
+                                             JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    responseElement.classList.add('success');
+                    responseElement.classList.remove('error');
+                } else {
+                    responseElement.classList.add('error');
+                    responseElement.classList.remove('success');
+                }
+            } catch (error) {
+                responseElement.textContent = 'Fehler: ' + error.message;
+                responseElement.classList.add('error');
+                responseElement.classList.remove('success');
+            }
+        });
+        
+        // Login simulieren
+        document.getElementById('login-btn').addEventListener('click', async function() {
+            const statusElement = document.getElementById('login-status');
+            const apiKey = document.getElementById('api-key-input').value.trim();
+            
+            if (!apiKey) {
+                statusElement.textContent = 'Bitte API-Schlüssel eingeben!';
+                statusElement.classList.add('error');
+                return;
+            }
+            
+            statusElement.textContent = 'Login wird durchgeführt...';
+            
+            try {
+                const response = await fetch('/api/admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'login',
+                        apiKey
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    // API-Schlüssel im localStorage und Cookie speichern
+                    localStorage.setItem('svp-admin-key', apiKey);
+                    const secure = window.location.protocol === 'https:' ? 'Secure;' : '';
+                    const expireDate = new Date();
+                    expireDate.setDate(expireDate.getDate() + 1);
+                    document.cookie = `svp-admin-key=${apiKey};expires=${expireDate.toUTCString()};path=/;${secure}SameSite=Lax`;
+                    
+                    // Session-Token speichern
+                    if (data.token) {
+                        localStorage.setItem('svp-session-token', data.token);
+                        localStorage.setItem('svp-session-token-expires', String(data.expires || Date.now() + (24 * 60 * 60 * 1000)));
+                    }
+                    
+                    statusElement.textContent = 'Login erfolgreich!\n' + JSON.stringify(data, null, 2);
+                    statusElement.classList.add('success');
+                    statusElement.classList.remove('error');
+                } else {
+                    statusElement.textContent = 'Login fehlgeschlagen: ' + (data.error || 'Unbekannter Fehler');
+                    statusElement.classList.add('error');
+                    statusElement.classList.remove('success');
+                }
+            } catch (error) {
+                statusElement.textContent = 'Fehler: ' + error.message;
+                statusElement.classList.add('error');
+                statusElement.classList.remove('success');
+            }
+        });
+        
+        // Initial den Authentifizierungsstatus prüfen
+        document.getElementById('check-auth-btn').click();
+    </script>
+</body>
+</html>

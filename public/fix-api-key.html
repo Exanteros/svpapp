@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVP App - API-Schlüssel Fehlerbehebung</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        h1 { color: #0070f3; }
+        button { background: #0070f3; color: white; border: none; padding: 8px 16px; border-radius: 4px; margin: 5px; cursor: pointer; }
+        button.danger { background: #ff4040; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .card { border: 1px solid #eaeaea; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>SVP App - API-Schlüssel Fehlerbehebung</h1>
+    
+    <div class="card">
+        <h2>Schnelle Fehlerbehebung</h2>
+        <p>Klicken Sie auf den Button, um alle Probleme zu beheben:</p>
+        <button id="fixAll">Alles reparieren</button>
+        <div id="fixAllResult"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Aktuelle API-Schlüssel Status</h2>
+        <div id="statusDisplay">Laden...</div>
+        <button id="checkStatus">Status aktualisieren</button>
+    </div>
+    
+    <div class="card">
+        <h2>Einzelne Aktionen</h2>
+        <button id="resetApiKey">API-Schlüssel zurücksetzen</button>
+        <button id="testApi">API testen</button>
+        <button id="diagnose">Diagnose durchführen</button>
+        <button class="danger" id="clearStorage">Alles löschen</button>
+    </div>
+    
+    <div class="card">
+        <h2>Ergebnis</h2>
+        <pre id="result">Noch keine Aktion ausgeführt.</pre>
+    </div>
+
+    <script>
+        // Status anzeigen
+        function updateStatus() {
+            const statusElement = document.getElementById('statusDisplay');
+            
+            // localStorage prüfen
+            const localStorageKey = localStorage.getItem('svp-admin-key');
+            
+            // Cookie prüfen
+            const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+            const apiKeyCookie = cookies.find(cookie => cookie.startsWith('svp-admin-key='));
+            const cookieKey = apiKeyCookie ? apiKeyCookie.split('=')[1] : null;
+            
+            // Status HTML generieren
+            let html = '';
+            
+            html += `<p>LocalStorage API-Schlüssel: <span class="${localStorageKey ? 'success' : 'error'}">${localStorageKey ? '✓ Vorhanden' : '✗ Fehlt'}</span>`;
+            if (localStorageKey) {
+                html += ` (Wert: "${localStorageKey}")`;
+            }
+            html += '</p>';
+            
+            html += `<p>Cookie API-Schlüssel: <span class="${cookieKey ? 'success' : 'error'}">${cookieKey ? '✓ Vorhanden' : '✗ Fehlt'}</span>`;
+            if (cookieKey) {
+                html += ` (Wert: "${cookieKey}")`;
+            }
+            html += '</p>';
+            
+            statusElement.innerHTML = html;
+        }
+        
+        // API-Schlüssel zurücksetzen
+        async function resetApiKey() {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = 'API-Schlüssel wird zurückgesetzt...';
+            
+            try {
+                // API-Schlüssel setzen
+                const apiKey = 'svp-admin-2025-secure-key';
+                
+                // In localStorage speichern
+                localStorage.setItem('svp-admin-key', apiKey);
+                
+                // In Cookie speichern
+                const expireDate = new Date();
+                expireDate.setDate(expireDate.getDate() + 7);
+                document.cookie = `svp-admin-key=${apiKey};expires=${expireDate.toUTCString()};path=/;SameSite=Lax`;
+                
+                resultElement.textContent = `API-Schlüssel wurde erfolgreich zurückgesetzt: "${apiKey}"`;
+                updateStatus();
+                
+                return apiKey;
+            } catch (error) {
+                resultElement.textContent = `Fehler beim Zurücksetzen des API-Schlüssels: ${error.message}`;
+                return null;
+            }
+        }
+        
+        // API testen
+        async function testApi() {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = 'API wird getestet...';
+            
+            try {
+                // API-Anfrage mit direktem API-Schlüssel
+                const response = await fetch('/api/helfer', {
+                    headers: {
+                        'X-API-Key': 'svp-admin-2025-secure-key'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.status === 200) {
+                    resultElement.textContent = `API-Test erfolgreich!\nStatus: ${response.status}\n\nAntwort: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    resultElement.textContent = `API-Test fehlgeschlagen.\nStatus: ${response.status}\n\nFehlermeldung: ${JSON.stringify(data, null, 2)}`;
+                }
+                
+                return { status: response.status, data };
+            } catch (error) {
+                resultElement.textContent = `Fehler beim API-Test: ${error.message}`;
+                return { error: error.message };
+            }
+        }
+        
+        // Diagnose durchführen
+        async function diagnoseApiKey() {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = 'Diagnose wird durchgeführt...';
+            
+            try {
+                const response = await fetch('/api/debug/key-check');
+                const data = await response.json();
+                
+                resultElement.textContent = `Diagnose abgeschlossen:\n\n${JSON.stringify(data, null, 2)}`;
+                return data;
+            } catch (error) {
+                resultElement.textContent = `Fehler bei der Diagnose: ${error.message}`;
+                return { error: error.message };
+            }
+        }
+        
+        // Alles löschen
+        function clearAll() {
+            const resultElement = document.getElementById('result');
+            
+            try {
+                // LocalStorage löschen
+                localStorage.removeItem('svp-admin-key');
+                localStorage.removeItem('svp-session-token');
+                
+                // SessionStorage löschen
+                sessionStorage.removeItem('svp-admin-key');
+                sessionStorage.removeItem('svp-session-token');
+                
+                // Cookies löschen
+                document.cookie = 'svp-admin-key=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+                document.cookie = 'svp-session-token=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+                
+                resultElement.textContent = 'Alle gespeicherten Daten wurden gelöscht.';
+                updateStatus();
+            } catch (error) {
+                resultElement.textContent = `Fehler beim Löschen: ${error.message}`;
+            }
+        }
+        
+        // Alles reparieren
+        async function fixAll() {
+            const resultElement = document.getElementById('fixAllResult');
+            resultElement.innerHTML = '<p>Reparatur wird durchgeführt...</p>';
+            
+            try {
+                // 1. API-Schlüssel zurücksetzen
+                await resetApiKey();
+                
+                // 2. API testen
+                const testResult = await testApi();
+                
+                if (testResult.status === 200) {
+                    resultElement.innerHTML = '<p class="success">✓ Alle Probleme wurden behoben! Die API funktioniert jetzt.</p>';
+                } else {
+                    resultElement.innerHTML = '<p class="error">✗ Die Reparatur hat nicht alle Probleme behoben. Diagnose wird durchgeführt...</p>';
+                    await diagnoseApiKey();
+                }
+            } catch (error) {
+                resultElement.innerHTML = `<p class="error">✗ Fehler bei der Reparatur: ${error.message}</p>`;
+            }
+        }
+        
+        // Event-Listener hinzufügen
+        document.getElementById('checkStatus').addEventListener('click', updateStatus);
+        document.getElementById('resetApiKey').addEventListener('click', resetApiKey);
+        document.getElementById('testApi').addEventListener('click', testApi);
+        document.getElementById('diagnose').addEventListener('click', diagnoseApiKey);
+        document.getElementById('clearStorage').addEventListener('click', clearAll);
+        document.getElementById('fixAll').addEventListener('click', fixAll);
+        
+        // Initial Status anzeigen
+        updateStatus();
+    </script>
+</body>
+</html>

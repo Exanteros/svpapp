@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVP App - Auth-Reparatur</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #1a365d; }
+        .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        button { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        button.secondary { background: #64748b; }
+        button.destructive { background: #ef4444; }
+        pre { background: #f1f5f9; padding: 12px; border-radius: 4px; overflow: auto; }
+        .button-group { display: flex; gap: 8px; margin-top: 12px; }
+        .status-item { margin-bottom: 8px; display: flex; align-items: center; }
+        .status-item:before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+        .status-success:before { background: #22c55e; }
+        .status-error:before { background: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SVP App - Authentifizierungs-Reparatur</h1>
+        
+        <div class="card">
+            <h2>API-Schlüssel Status</h2>
+            <div id="status"></div>
+            
+            <div class="button-group">
+                <button onclick="resetApiKey()">API-Schlüssel zurücksetzen</button>
+                <button class="secondary" onclick="checkStatus()">Status aktualisieren</button>
+                <button class="destructive" onclick="clearAllAuth()">Alles löschen</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>API-Test</h2>
+            <p>Teste den API-Zugriff mit dem aktuellen API-Schlüssel:</p>
+            <div class="button-group">
+                <button onclick="testApiAccess()">API-Zugriff testen</button>
+                <button class="secondary" onclick="openDebugPage()">Debug-Seite öffnen</button>
+            </div>
+            <div id="api-result" style="margin-top: 16px;"></div>
+        </div>
+        
+        <div class="card">
+            <h2>Anleitung</h2>
+            <ol>
+                <li>Klicke auf "API-Schlüssel zurücksetzen" um den Standard-API-Schlüssel zu setzen.</li>
+                <li>Teste den API-Zugriff mit "API-Zugriff testen".</li>
+                <li>Wenn der Test erfolgreich ist, kehre zur Admin-Seite zurück.</li>
+                <li>Falls Probleme bestehen bleiben, öffne die Debug-Seite für weitere Diagnosen.</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // Status prüfen
+        function checkStatus() {
+            // LocalStorage prüfen
+            const localStorageKey = localStorage.getItem('svp-admin-key');
+            
+            // Cookie prüfen
+            const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+            const apiKeyCookie = cookies.find(cookie => cookie.startsWith('svp-admin-key='));
+            const apiKeyFromCookie = apiKeyCookie ? apiKeyCookie.split('=')[1] : null;
+            
+            // Session Token prüfen
+            const sessionToken = localStorage.getItem('svp-session-token');
+            
+            // Status anzeigen
+            let statusHtml = '';
+            
+            // API Key Status
+            statusHtml += `<div class="status-item ${localStorageKey ? 'status-success' : 'status-error'}">
+                LocalStorage API-Key: ${localStorageKey ? 'Vorhanden' : 'Nicht vorhanden'}
+                ${localStorageKey ? ` (${localStorageKey.substring(0, 8)}...)` : ''}
+            </div>`;
+            
+            statusHtml += `<div class="status-item ${apiKeyFromCookie ? 'status-success' : 'status-error'}">
+                Cookie API-Key: ${apiKeyFromCookie ? 'Vorhanden' : 'Nicht vorhanden'}
+                ${apiKeyFromCookie ? ` (${apiKeyFromCookie.substring(0, 8)}...)` : ''}
+            </div>`;
+            
+            // Session Status
+            statusHtml += `<div class="status-item ${sessionToken ? 'status-success' : 'status-error'}">
+                Session Token: ${sessionToken ? 'Vorhanden' : 'Nicht vorhanden'}
+                ${sessionToken ? ` (${sessionToken.substring(0, 8)}...)` : ''}
+            </div>`;
+            
+            document.getElementById('status').innerHTML = statusHtml;
+        }
+        
+        // API-Schlüssel zurücksetzen
+        function resetApiKey() {
+            // Standard-API-Key
+            const apiKey = 'svp-admin-2025-secure-key';
+            
+            // In localStorage speichern
+            localStorage.setItem('svp-admin-key', apiKey);
+            
+            // In Cookie speichern (1 Tag gültig)
+            const expireDate = new Date();
+            expireDate.setDate(expireDate.getDate() + 1);
+            document.cookie = `svp-admin-key=${apiKey};expires=${expireDate.toUTCString()};path=/;SameSite=Lax`;
+            
+            // Status aktualisieren
+            checkStatus();
+            
+            alert('API-Schlüssel wurde zurückgesetzt!');
+        }
+        
+        // Alle Auth-Daten löschen
+        function clearAllAuth() {
+            localStorage.removeItem('svp-admin-key');
+            localStorage.removeItem('svp-session-token');
+            sessionStorage.removeItem('svp-admin-key');
+            sessionStorage.removeItem('svp-session-token');
+            
+            document.cookie = 'svp-admin-key=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+            document.cookie = 'svp-session-token=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;';
+            
+            // Status aktualisieren
+            checkStatus();
+            
+            alert('Alle Authentifizierungsdaten wurden gelöscht!');
+        }
+        
+        // API-Test durchführen
+        async function testApiAccess() {
+            const resultElement = document.getElementById('api-result');
+            resultElement.innerHTML = '<p>Test läuft...</p>';
+            
+            try {
+                // API-Key aus localStorage oder Cookie lesen
+                const localStorageKey = localStorage.getItem('svp-admin-key');
+                const cookies = document.cookie.split(';').map(cookie => cookie.trim());
+                const apiKeyCookie = cookies.find(cookie => cookie.startsWith('svp-admin-key='));
+                const apiKeyFromCookie = apiKeyCookie ? apiKeyCookie.split('=')[1] : null;
+                const apiKey = localStorageKey || apiKeyFromCookie || 'svp-admin-2025-secure-key';
+                
+                // API-Aufruf durchführen
+                const response = await fetch('/api/helfer', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.status === 200) {
+                    resultElement.innerHTML = `
+                        <div style="color: green; margin-bottom: 8px;">✅ API-Zugriff erfolgreich (Status ${response.status})</div>
+                        <p>Die API hat korrekt geantwortet. Sie können zur Admin-Seite zurückkehren.</p>
+                        <button onclick="window.location.href='/admin'">Zur Admin-Seite</button>
+                    `;
+                } else {
+                    resultElement.innerHTML = `
+                        <div style="color: red; margin-bottom: 8px;">❌ API-Zugriff fehlgeschlagen (Status ${response.status})</div>
+                        <p>Fehlermeldung: ${data.error || 'Unbekannter Fehler'}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultElement.innerHTML = `
+                    <div style="color: red; margin-bottom: 8px;">❌ API-Zugriff fehlgeschlagen</div>
+                    <p>Fehlermeldung: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Debug-Seite öffnen
+        function openDebugPage() {
+            window.location.href = '/debug/auth';
+        }
+        
+        // Initial Status prüfen
+        checkStatus();
+    </script>
+</body>
+</html>
