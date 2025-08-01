@@ -7,7 +7,7 @@ export class EmailForwarder {
 
   constructor() {
     // Create SMTP transporter for sending emails
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'localhost',
       port: parseInt(process.env.SMTP_OUT_PORT || '587'),
       secure: false, // true for 465, false for other ports
