@@ -14,7 +14,7 @@ class IntegratedEmailServer {
   private isRunning: boolean = false;
 
   constructor(port: number = 2525) {
-    this.port = port;
+    this.port = Number(port);
   }
 
   async start() {
@@ -56,23 +56,22 @@ class IntegratedEmailServer {
           callback();
         } catch (error) {
           console.error('❌ Email-Verarbeitung fehlgeschlagen:', error);
-          callback(error);
+          callback(error instanceof Error ? error : new Error(String(error)));
         }
       }
     });
 
     return new Promise<void>((resolve, reject) => {
-      this.server!.listen(this.port, '0.0.0.0', (err) => {
-        if (err) {
-          console.error('❌ SMTP Server Start fehlgeschlagen:', err);
-          reject(err);
-        } else {
-          this.isRunning = true;
-          console.log(`✅ SMTP Server läuft auf Port ${this.port}`);
-          console.log(`📧 Bereit für Email-Empfang an *.email.rasenturnier.sv-puschendorf.de`);
-          resolve();
-        }
-      });
+      try {
+        this.server!.listen(this.port);
+        this.isRunning = true;
+        console.log(`✅ SMTP Server läuft auf Port ${this.port}`);
+        console.log(`📧 Bereit für Email-Empfang an *.email.rasenturnier.sv-puschendorf.de`);
+        resolve();
+      } catch (err) {
+        console.error('❌ SMTP Server Start fehlgeschlagen:', err);
+        reject(err);
+      }
     });
   }
 
