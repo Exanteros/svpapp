@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       
       // Verwende die konfigurierte Domain
       teamEmail = await emailService.createTeamEmail(
-        parseInt(anmeldungId), 
+        anmeldungId.toString(), 
         body.verein,
         getTeamEmailDomain()
       );
