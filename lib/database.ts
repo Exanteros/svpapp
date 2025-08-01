@@ -6,10 +6,23 @@ let db: Database.Database | null = null;
 
 export function getDatabase() {
   if (!db) {
-    db = new Database(path.join(process.cwd(), 'database.sqlite'));
+    db = new Database(path.join(process.cwd(), 'database.sqlite'), {
+      // Memory optimization for low-resource servers
+      readonly: false,
+      fileMustExist: false,
+      timeout: parseInt(process.env.DB_TIMEOUT || '5000'),
+    });
     
-    // WAL-Modus für bessere Concurrency
+    // Memory and performance optimizations
     db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL'); // Faster writes
+    db.pragma('cache_size = -2000'); // 2MB cache (reduced from default)
+    db.pragma('temp_store = memory');
+    db.pragma('mmap_size = 67108864'); // 64MB mmap
+    
+    // Connection pool simulation for SQLite
+    const poolSize = parseInt(process.env.DB_POOL_SIZE || '3');
+    db.pragma(`busy_timeout = ${poolSize * 1000}`);
     
     // Tabellen erstellen
     initializeTables();
@@ -88,6 +101,27 @@ function initializeTables() {
       key TEXT UNIQUE NOT NULL,
       value TEXT NOT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  // Admin-Einstellungen Tabelle (für Feld-Einstellungen etc.)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_settings (
+      key TEXT PRIMARY KEY,
+      einstellungen TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  
+  // Spiel-Feld-Zuordnungen Tabelle (für Tag-spezifische Beschränkungen)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS feld_jahrgang_zuordnungen (
+      id TEXT PRIMARY KEY,
+      feld_id TEXT NOT NULL,
+      datum TEXT NOT NULL,
+      jahrgang TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(feld_id, datum, jahrgang)
     )
   `);
   
@@ -324,4 +358,52 @@ export function getStatistiken() {
     bezahlt: bezahltCount.count,
     gesamtKosten: gesamtKosten.total || 0
   };
+}
+
+// Funktionen für Tag-spezifische Feld-Jahrgang-Zuordnungen
+export function saveFeldJahrgangZuordnung(feldId: string, datum: string, jahrgang: string) {
+  const db = getDatabase();
+  
+  const id = `${feldId}_${datum}_${jahrgang}`;
+  
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO feld_jahrgang_zuordnungen (id, feld_id, datum, jahrgang)
+    VALUES (?, ?, ?, ?)
+  `);
+  
+  return insert.run(id, feldId, datum, jahrgang);
+}
+
+export function deleteFeldJahrgangZuordnung(feldId: string, datum: string, jahrgang: string) {
+  const db = getDatabase();
+  
+  const deleteStmt = db.prepare(`
+    DELETE FROM feld_jahrgang_zuordnungen 
+    WHERE feld_id = ? AND datum = ? AND jahrgang = ?
+  `);
+  
+  return deleteStmt.run(feldId, datum, jahrgang);
+}
+
+export function getFeldJahrgangZuordnungen() {
+  const db = getDatabase();
+  
+  const zuordnungen = db.prepare(`
+    SELECT * FROM feld_jahrgang_zuordnungen ORDER BY datum, feld_id, jahrgang
+  `).all();
+  
+  // Gruppiere nach Feld und Datum
+  const gruppiert: { [feldId: string]: { [datum: string]: string[] } } = {};
+  
+  for (const zuordnung of zuordnungen) {
+    if (!gruppiert[zuordnung.feld_id]) {
+      gruppiert[zuordnung.feld_id] = {};
+    }
+    if (!gruppiert[zuordnung.feld_id][zuordnung.datum]) {
+      gruppiert[zuordnung.feld_id][zuordnung.datum] = [];
+    }
+    gruppiert[zuordnung.feld_id][zuordnung.datum].push(zuordnung.jahrgang);
+  }
+  
+  return gruppiert;
 }

@@ -52,8 +52,14 @@ export async function POST(request: NextRequest) {
         return createAuthResponse({ success: true, ...result }, auth.headers);
         
       case 'delete_bedarf':
-        deleteHelferBedarf(data.id);
-        return createAuthResponse({ success: true }, auth.headers);
+        console.log('Delete bedarf called with data:', data);
+        const bedarfId = data.bedarfId || data.id;
+        if (!bedarfId) {
+          return createErrorResponse('Keine Bedarf-ID angegeben', 400);
+        }
+        const deleteResult = deleteHelferBedarf(bedarfId);
+        console.log('Delete result:', deleteResult);
+        return createAuthResponse({ success: true, deleted: deleteResult.changes > 0 }, auth.headers);
         
       case 'generate_link':
         const helferLink = generateHelferLink();

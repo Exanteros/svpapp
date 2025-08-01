@@ -118,17 +118,22 @@ export default function AnmeldungPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200">
+      <header className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
               <ArrowLeft className="h-5 w-5" />
               Zurück
             </Link>
-            <div className="flex items-center gap-2">
-              <Trophy className="h-6 w-6 text-green-600" />
+            <div className="flex items-center gap-3">
+              {/* Handball Ball Icon */}
+              <div className="relative w-8 h-8">
+                <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
+                <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full"></div>
+                <div className="absolute top-2 left-2 w-4 h-4 bg-orange-500 rounded-full"></div>
+              </div>
               <h1 className="text-xl font-bold text-gray-900">Team-Anmeldung</h1>
             </div>
           </div>
@@ -138,10 +143,10 @@ export default function AnmeldungPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           {/* Turnierinfo */}
-          <Card className="mb-8 bg-white/80 backdrop-blur-sm">
+          <Card className="mb-8 bg-white border border-gray-200">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Info className="h-5 w-5 text-blue-600" />
+                <Info className="h-5 w-5 text-orange-500" />
                 Turnierinfo
               </CardTitle>
             </CardHeader>
@@ -164,9 +169,9 @@ export default function AnmeldungPage() {
                   </ul>
                 </div>
               </div>
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                <h4 className="font-semibold text-blue-900">Kosten:</h4>
-                <p className="text-blue-800 text-sm">
+              <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                <h4 className="font-semibold text-orange-900">Kosten:</h4>
+                <p className="text-orange-800 text-sm">
                   • Startgeld: 25€ pro Mannschaft<br />
                   • Ohne Schiedsrichter: +20€ pro Mannschaft
                 </p>
@@ -176,7 +181,7 @@ export default function AnmeldungPage() {
 
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Kontaktdaten */}
-            <Card className="bg-white/80 backdrop-blur-sm">
+            <Card className="bg-white border border-gray-200">
               <CardHeader>
                 <CardTitle>Kontaktdaten</CardTitle>
                 <CardDescription>Ihre Vereins- und Kontaktinformationen</CardDescription>
@@ -229,7 +234,7 @@ export default function AnmeldungPage() {
             </Card>
 
             {/* Team-Anmeldungen */}
-            <Card className="bg-white/80 backdrop-blur-sm">
+            <Card className="bg-white border border-gray-200">
               <CardHeader>
                 <CardTitle>Team-Anmeldungen</CardTitle>
                 <CardDescription>Wählen Sie die Kategorien und Anzahl der Teams</CardDescription>
@@ -241,7 +246,7 @@ export default function AnmeldungPage() {
 
             {/* Angemeldete Teams */}
             {registrations.length > 0 && (
-              <Card className="bg-white/80 backdrop-blur-sm">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle>Angemeldete Teams</CardTitle>
                   <CardDescription>Übersicht Ihrer Anmeldungen</CardDescription>
@@ -249,16 +254,16 @@ export default function AnmeldungPage() {
                 <CardContent>
                   <div className="space-y-3">
                     {registrations.map((reg, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <div className="flex items-center gap-3">
-                          <Badge variant="outline">{reg.category}</Badge>
+                          <Badge variant="outline" className="border-orange-300 text-orange-700">{reg.category}</Badge>
                           <span className="text-sm">
                             {reg.teamCount} Team{reg.teamCount > 1 ? 's' : ''}
                           </span>
                           {reg.skillLevel && (
-                            <Badge variant="secondary">{reg.skillLevel}</Badge>
+                            <Badge variant="secondary" className="bg-gray-200 text-gray-700">{reg.skillLevel}</Badge>
                           )}
-                          <Badge variant={reg.hasReferee ? "default" : "destructive"}>
+                          <Badge variant={reg.hasReferee ? "default" : "destructive"} className={reg.hasReferee ? "bg-green-100 text-green-800 border-green-300" : "bg-orange-100 text-orange-800 border-orange-300"}>
                             {reg.hasReferee ? "Mit Schiri" : "Ohne Schiri"}
                           </Badge>
                         </div>
@@ -270,6 +275,7 @@ export default function AnmeldungPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeRegistration(index)}
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                           >
                             Entfernen
                           </Button>
@@ -280,7 +286,7 @@ export default function AnmeldungPage() {
                   <Separator className="my-4" />
                   <div className="flex items-center justify-between font-semibold">
                     <span>Gesamtkosten:</span>
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1 text-orange-600">
                       <Euro className="h-4 w-4" />
                       {calculateTotalCost()}€
                     </span>
@@ -290,7 +296,7 @@ export default function AnmeldungPage() {
             )}
 
             {/* Zahlungsinfo */}
-            <Card className="bg-white/80 backdrop-blur-sm">
+            <Card className="bg-white border border-gray-200">
               <CardHeader>
                 <CardTitle>Zahlungshinweise</CardTitle>
               </CardHeader>
@@ -298,7 +304,7 @@ export default function AnmeldungPage() {
                 <p className="text-sm text-gray-600 mb-4">
                   Bitte überweisen Sie das Startgeld auf das Vereinskonto des SV Puschendorf:
                 </p>
-                <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                   <p className="text-sm font-mono">
                     <strong>Verwendungszweck:</strong><br />
                     "Rasenturnier 2025, {contactData.verein || '[Vereinsname]'}, {registrations.length} Team{registrations.length !== 1 ? 's' : ''}"
@@ -312,7 +318,7 @@ export default function AnmeldungPage() {
               <Button
                 type="submit"
                 size="lg"
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3"
                 disabled={registrations.length === 0 || isSubmitting}
               >
                 {isSubmitting ? "Wird gesendet..." : "Anmeldung absenden"}
@@ -439,7 +445,7 @@ function TeamRegistrationForm({ onAddRegistration }: { onAddRegistration: (categ
         type="button" 
         onClick={handleAdd}
         disabled={!selectedCategory || (selectedCategoryData?.needsSkill && !skillLevel)}
-        className="w-full"
+        className="w-full bg-orange-500 hover:bg-orange-600 text-white"
       >
         Team hinzufügen
       </Button>

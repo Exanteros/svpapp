@@ -145,7 +145,7 @@ async function generateSpielplan(params: any) {
   }
   
   console.log(`🏟️ Felder für Spielplan: ${feldEinstellungen.map(f => f.name).join(', ')}`);
-  console.log('� Feld-Beschränkungen:', feldEinstellungen.map(f => ({
+  console.log('🏟️ Feld-Beschränkungen:', feldEinstellungen.map(f => ({
     feld: f.name,
     erlaubteJahrgaenge: f.erlaubteJahrgaenge || 'Alle',
     erlaubteJahrgaengeProTag: f.erlaubteJahrgaengeProTag || 'Keine'
@@ -209,6 +209,51 @@ async function generateSpielplan(params: any) {
   console.log(`📅 Turnierdaten: ${turnierStartDatum} bis ${turnierEndDatum}`);
   console.log(`⏰ Zeiteinstellungen - Samstag: ${samstagStartzeit} - ${samstagEndzeit}, Sonntag: ${sonntagStartzeit} - ${sonntagEndzeit}`);
   
+  // Log für jedes Feld die Tag-spezifischen Einstellungen
+  console.log(`🔍 Debug: Tag-spezifische Feld-Einstellungen mit korrekten Datumsvergleichen:`);
+  feldEinstellungen.forEach(feld => {
+    console.log(`🏟️ ${feld.name} - Spezifische Jahrgänge pro Tag:`);
+    if (feld.erlaubteJahrgaengeProTag) {
+      Object.entries(feld.erlaubteJahrgaengeProTag).forEach(([datum, jahrgaenge]) => {
+        console.log(`  📅 ${datum}: [${jahrgaenge.join(', ')}]`);
+        console.log(`    🔄 Vergleich mit Turnierdaten: Samstag(${turnierStartDatum})=${datum === turnierStartDatum}, Sonntag(${turnierEndDatum})=${datum === turnierEndDatum}`);
+      });
+    } else {
+      console.log(`  ❌ Keine Tag-spezifischen Einstellungen`);
+    }
+  });
+
+  // WICHTIG: Normalisiere die Tag-spezifischen Feld-Einstellungen 
+  // Das Admin-Interface verwendet feste Datumsstrings, aber der Generator verwendet dynamische Turnierdaten
+  // Wir müssen diese mappen
+  const normalizedFeldEinstellungen = feldEinstellungen.map(feld => {
+    const normalizedErlaubteJahrgaengeProTag: { [datum: string]: string[] } = {};
+    
+    if (feld.erlaubteJahrgaengeProTag) {
+      // Mappe bekannte feste Daten auf die dynamischen Turnierdaten
+      const staticToTournament: { [key: string]: string } = {
+        '2025-07-05': turnierStartDatum,  // Samstag
+        '2025-07-06': turnierEndDatum     // Sonntag
+      };
+      
+      Object.entries(feld.erlaubteJahrgaengeProTag).forEach(([staticDatum, jahrgaenge]) => {
+        const tournamentDatum = staticToTournament[staticDatum] || staticDatum;
+        normalizedErlaubteJahrgaengeProTag[tournamentDatum] = jahrgaenge;
+        console.log(`📝 Mapping ${feld.name}: ${staticDatum} -> ${tournamentDatum}`);
+      });
+    }
+    
+    return {
+      ...feld,
+      erlaubteJahrgaengeProTag: normalizedErlaubteJahrgaengeProTag
+    };
+  });
+
+  console.log(`✅ Feld-Einstellungen wurden normalisiert für Turnierdaten`);
+  
+  // Verwende die normalisierten Einstellungen ab hier
+  const fieldSettings = normalizedFeldEinstellungen;
+  
   // Definiere Turnierzeiten pro Tag
   const parseTime = (timeString: string): number => {
     const [hours, minutes] = timeString.split(':').map(Number);
@@ -226,7 +271,7 @@ async function generateSpielplan(params: any) {
   console.log(`⏰ Verfügbare Zeit - Samstag: ${verfügbareZeitSamstag} min, Sonntag: ${verfügbareZeitSonntag} min`);
   
   // Erstelle einen separaten Zeitplan für jedes Feld
-  const feldZeitpläne = feldEinstellungen.map(feld => ({
+  const feldZeitpläne = fieldSettings.map(feld => ({
     feld,
     zeitSlots: [] as Array<{ zeit: string, datum: string, belegt: boolean }>
   }));
@@ -287,12 +332,13 @@ async function generateSpielplan(params: any) {
       const kategorieForFeldCheck = kategoriePool;
       
       // Finde verfügbare Felder für diese Kategorie am spezifischen Datum
-      const verfügbareFelder = feldEinstellungen.filter(feld => {
+      const verfügbareFelder = fieldSettings.filter(feld => {
         console.log(`🔍 Prüfe Feld ${feld.name} für Kategorie ${kategorieForFeldCheck} am ${datum}`);
         
         // Prüfe zuerst Tag-spezifische Einstellungen
         const jahrgaengeProTag = feld.erlaubteJahrgaengeProTag?.[datum];
         console.log(`📅 Tag-spezifische Jahrgänge für ${feld.name} am ${datum}:`, jahrgaengeProTag);
+        console.log(`🗂️ Alle verfügbaren Datumskeys für ${feld.name}:`, Object.keys(feld.erlaubteJahrgaengeProTag || {}));
         
         if (jahrgaengeProTag && jahrgaengeProTag.length > 0) {
           // Tag-spezifische Beschränkungen vorhanden - verwende diese

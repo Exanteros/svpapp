@@ -325,6 +325,13 @@ function getStatusBadge(spiel: Spiel, spielplanData?: { liveData?: { [spielId: s
   }
 }
 
+function getWeekdayName(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long'
+  });
+}
+
 export default function SpielplanPage() {
   const [spielplanData, setSpielplanData] = useState<{
     samstag: { datum: string; zeit: string; spiele: Spiel[] };
@@ -718,8 +725,8 @@ export default function SpielplanPage() {
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'samstag' | 'sonntag')} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="samstag">Samstag</TabsTrigger>
-            <TabsTrigger value="sonntag">Sonntag</TabsTrigger>
+            <TabsTrigger value="samstag">{getWeekdayName(spielplanData.samstag.datum)}</TabsTrigger>
+            <TabsTrigger value="sonntag">{getWeekdayName(spielplanData.sonntag.datum)}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="samstag" className="space-y-4">

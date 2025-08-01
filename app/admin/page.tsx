@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -603,6 +604,8 @@ export default function AdminPage () {
     }
 
     try {
+      console.log('Deleting Helfer-Bedarf with ID:', bedarfId);
+      
       const response = await fetch('/api/helfer', {
         method: 'POST',
         headers: {
@@ -614,15 +617,23 @@ export default function AdminPage () {
         })
       })
 
+      const result = await response.json();
+      console.log('Delete response:', result);
+
       if (!response.ok) {
-        throw new Error('Fehler beim Löschen des Helfer-Bedarfs')
+        throw new Error(result.error || 'Fehler beim Löschen des Helfer-Bedarfs')
+      }
+
+      if (result.deleted === false) {
+        alert('Helfer-Bedarf konnte nicht gelöscht werden (möglicherweise bereits gelöscht)');
+        return;
       }
 
       await loadHelferData()
       alert('Helfer-Bedarf erfolgreich gelöscht!')
     } catch (error) {
       console.error('Fehler beim Löschen des Helfer-Bedarf:', error)
-      alert('Fehler beim Löschen des Helfer-Bedarf')
+      alert(`Fehler beim Löschen des Helfer-Bedarf: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`)
     }
   }
 
@@ -1840,28 +1851,31 @@ export default function AdminPage () {
   }
 
   return (
-    <div className='min-h-screen bg-gradient-to-br from-slate-50 to-blue-50'>
+    <div className='min-h-screen bg-white'>
       {/* Header */}
-      <header className='bg-white/95 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-50 shadow-sm'>
+      <header className='bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm'>
         <div className='max-w-7xl mx-auto px-4 sm:px-6 py-4'>
           <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
             <div className='flex items-center gap-4 sm:gap-6'>
-              <button className='flex items-center gap-2 text-slate-600 hover:text-slate-800 transition-colors duration-200'>
+              <Link href="/" className='flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors duration-200'>
                 <ArrowLeft className='h-4 w-4' />
                 <span className='font-medium text-sm hidden sm:inline'>
                   Zurück zur Website
                 </span>
                 <span className='font-medium text-sm sm:hidden'>Zurück</span>
-              </button>
+              </Link>
               <div className='flex items-center gap-3'>
-                <div className='p-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl shadow-lg'>
-                  <Shield className='h-5 w-5 sm:h-6 sm:w-6 text-white' />
+                {/* Handball Ball Icon */}
+                <div className='w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center'>
+                  <div className='w-7 h-7 bg-white rounded-full flex items-center justify-center'>
+                    <div className='w-3 h-3 bg-orange-500 rounded-full'></div>
+                  </div>
                 </div>
                 <div>
-                  <h1 className='text-lg sm:text-xl font-bold text-slate-800'>
+                  <h1 className='text-lg sm:text-xl font-bold text-gray-800'>
                     Turnier-Verwaltung
                   </h1>
-                  <p className='text-xs text-slate-500 hidden sm:block'>
+                  <p className='text-xs text-gray-500 hidden sm:block'>
                     SV Puschendorf • Admin-Dashboard
                   </p>
                 </div>
@@ -1897,14 +1911,14 @@ export default function AdminPage () {
                 <span className='sm:hidden'>Logout</span>
               </Button>
               <div className='flex items-center gap-2 text-sm'>
-                <div className='w-2 h-2 bg-emerald-500 rounded-full animate-pulse'></div>
-                <span className='text-slate-600 text-xs font-medium hidden sm:inline'>
+                <div className='w-2 h-2 bg-orange-500 rounded-full animate-pulse'></div>
+                <span className='text-gray-600 text-xs font-medium hidden sm:inline'>
                   Online
                 </span>
               </div>
               <Badge
                 variant='outline'
-                className='bg-blue-50 text-blue-700 border-blue-200 px-2 sm:px-3 py-1 font-medium'
+                className='bg-orange-50 text-orange-700 border-orange-200 px-2 sm:px-3 py-1 font-medium'
               >
                 <Users className='w-3 h-3 mr-1' />
                 <span className='hidden sm:inline'>Administrator</span>
@@ -1918,85 +1932,85 @@ export default function AdminPage () {
       <div className='max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8'>
         {/* Statistik-Karten */}
         <div className='grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-10'>
-          <Card className='bg-white border-slate-200 shadow-sm hover:shadow-md transition-all duration-200'>
+          <Card className='bg-white border-gray-200 shadow-sm hover:shadow-md transition-all duration-200'>
             <CardContent className='p-4 sm:p-6'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <p className='text-xs sm:text-sm font-medium text-slate-600 mb-1'>
+                  <p className='text-xs sm:text-sm font-medium text-gray-600 mb-1'>
                     Anmeldungen
                   </p>
-                  <p className='text-xl sm:text-3xl font-bold text-slate-800'>
+                  <p className='text-xl sm:text-3xl font-bold text-gray-800'>
                     {statistiken.anmeldungen}
                   </p>
-                  <p className='text-xs text-slate-500 mt-1 hidden sm:block'>
+                  <p className='text-xs text-gray-500 mt-1 hidden sm:block'>
                     Aktive Registrierungen
                   </p>
                 </div>
-                <div className='p-2 sm:p-3 bg-blue-100 rounded-xl'>
-                  <Users className='h-4 w-4 sm:h-6 sm:w-6 text-blue-600' />
+                <div className='p-2 sm:p-3 bg-orange-100 rounded-xl'>
+                  <Users className='h-4 w-4 sm:h-6 sm:w-6 text-orange-600' />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className='bg-white border-slate-200 shadow-sm hover:shadow-md transition-all duration-200'>
+          <Card className='bg-white border-gray-200 shadow-sm hover:shadow-md transition-all duration-200'>
             <CardContent className='p-4 sm:p-6'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <p className='text-xs sm:text-sm font-medium text-slate-600 mb-1'>
+                  <p className='text-xs sm:text-sm font-medium text-gray-600 mb-1'>
                     Teams gesamt
                   </p>
-                  <p className='text-xl sm:text-3xl font-bold text-slate-800'>
+                  <p className='text-xl sm:text-3xl font-bold text-gray-800'>
                     {statistiken.teams}
                   </p>
-                  <p className='text-xs text-slate-500 mt-1 hidden sm:block'>
+                  <p className='text-xs text-gray-500 mt-1 hidden sm:block'>
                     Alle Kategorien
                   </p>
                 </div>
-                <div className='p-2 sm:p-3 bg-amber-100 rounded-xl'>
-                  <Trophy className='h-4 w-4 sm:h-6 sm:w-6 text-amber-600' />
+                <div className='p-2 sm:p-3 bg-orange-100 rounded-xl'>
+                  <Trophy className='h-4 w-4 sm:h-6 sm:w-6 text-orange-600' />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className='bg-white border-slate-200 shadow-sm hover:shadow-md transition-all duration-200'>
+          <Card className='bg-white border-gray-200 shadow-sm hover:shadow-md transition-all duration-200'>
             <CardContent className='p-4 sm:p-6'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <p className='text-xs sm:text-sm font-medium text-slate-600 mb-1'>
+                  <p className='text-xs sm:text-sm font-medium text-gray-600 mb-1'>
                     Einnahmen
                   </p>
-                  <p className='text-xl sm:text-3xl font-bold text-slate-800'>
+                  <p className='text-xl sm:text-3xl font-bold text-gray-800'>
                     {statistiken.gesamtKosten}€
                   </p>
-                  <p className='text-xs text-slate-500 mt-1 hidden sm:block'>
+                  <p className='text-xs text-gray-500 mt-1 hidden sm:block'>
                     Erwartete Einnahmen
                   </p>
                 </div>
-                <div className='p-2 sm:p-3 bg-emerald-100 rounded-xl'>
-                  <Euro className='h-4 w-4 sm:h-6 sm:w-6 text-emerald-600' />
+                <div className='p-2 sm:p-3 bg-orange-100 rounded-xl'>
+                  <Euro className='h-4 w-4 sm:h-6 sm:w-6 text-orange-600' />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className='bg-white border-slate-200 shadow-sm hover:shadow-md transition-all duration-200'>
+          <Card className='bg-white border-gray-200 shadow-sm hover:shadow-md transition-all duration-200'>
             <CardContent className='p-4 sm:p-6'>
               <div className='flex items-center justify-between'>
                 <div>
-                  <p className='text-xs sm:text-sm font-medium text-slate-600 mb-1'>
+                  <p className='text-xs sm:text-sm font-medium text-gray-600 mb-1'>
                     Bezahlt
                   </p>
-                  <p className='text-xl sm:text-3xl font-bold text-emerald-600'>
+                  <p className='text-xl sm:text-3xl font-bold text-orange-600'>
                     {statistiken.bezahlt}
                   </p>
-                  <p className='text-xs text-slate-500 mt-1 hidden sm:block'>
+                  <p className='text-xs text-gray-500 mt-1 hidden sm:block'>
                     Bestätigte Zahlungen
                   </p>
                 </div>
-                <div className='p-2 sm:p-3 bg-emerald-100 rounded-xl'>
-                  <CheckCircle className='h-4 w-4 sm:h-6 sm:w-6 text-emerald-600' />
+                <div className='p-2 sm:p-3 bg-orange-100 rounded-xl'>
+                  <CheckCircle className='h-4 w-4 sm:h-6 sm:w-6 text-orange-600' />
                 </div>
               </div>
             </CardContent>
@@ -2005,10 +2019,10 @@ export default function AdminPage () {
 
         {/* Navigations-Tabs */}
         <Tabs defaultValue='anmeldungen' className='w-full'>
-          <TabsList className='flex w-full justify-between mb-6 sm:mb-10 bg-white border border-slate-200 p-1 rounded-xl shadow-sm overflow-hidden relative'>
+          <TabsList className='flex w-full justify-between mb-6 sm:mb-10 bg-white border border-gray-200 p-1 rounded-xl shadow-sm overflow-hidden relative'>
             <TabsTrigger
               value='anmeldungen'
-              className='data-[state=active]:bg-blue-100 data-[state=active]:text-blue-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Users className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Anmeldungen</span>
@@ -2016,7 +2030,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='spielplan'
-              className='data-[state=active]:bg-emerald-100 data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <CalendarIcon className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Spielplan</span>
@@ -2024,7 +2038,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='live'
-              className='data-[state=active]:bg-red-100 data-[state=active]:text-red-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Activity className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Live Games</span>
@@ -2032,7 +2046,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='ergebnisse'
-              className='data-[state=active]:bg-green-100 data-[state=active]:text-green-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Trophy className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Ergebnisse</span>
@@ -2040,7 +2054,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='helfer'
-              className='data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Shield className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Personal</span>
@@ -2048,7 +2062,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='einstellungen'
-              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Settings className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Einstellungen</span>
@@ -2056,7 +2070,7 @@ export default function AdminPage () {
             </TabsTrigger>
             <TabsTrigger
               value='export'
-              className='data-[state=active]:bg-indigo-100 data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm text-slate-600 hover:text-slate-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
+              className='data-[state=active]:bg-orange-100 data-[state=active]:text-orange-700 data-[state=active]:shadow-sm text-gray-600 hover:text-gray-800 transition-all duration-200 py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-medium text-xs sm:text-sm'
             >
               <Download className='h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2' />
               <span className='hidden sm:inline'>Export</span>
@@ -2066,15 +2080,15 @@ export default function AdminPage () {
 
           {/* Anmeldungen Tab */}
           <TabsContent value='anmeldungen' className='mt-6 sm:mt-8'>
-            <Card className='bg-white border-slate-200 shadow-sm'>
-              <CardHeader className='pb-4 sm:pb-6 border-b border-slate-100'>
+            <Card className='bg-white border-gray-200 shadow-sm'>
+              <CardHeader className='pb-4 sm:pb-6 border-b border-gray-100'>
                 <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4'>
                   <div className='flex items-center gap-3'>
-                    <div className='p-2 bg-blue-100 rounded-lg'>
-                      <Users className='h-4 w-4 sm:h-5 sm:w-5 text-blue-600' />
+                    <div className='p-2 bg-orange-100 rounded-lg'>
+                      <Users className='h-4 w-4 sm:h-5 sm:w-5 text-orange-600' />
                     </div>
                     <div>
-                      <CardTitle className='text-lg sm:text-xl text-slate-800'>
+                      <CardTitle className='text-lg sm:text-xl text-gray-800'>
                         Anmeldungen verwalten
                       </CardTitle>
                       <CardDescription className='text-sm text-slate-600 hidden sm:block'>
@@ -2516,14 +2530,14 @@ export default function AdminPage () {
                   <div className='flex items-center justify-between'>
                     {' '}
                     <div className='flex items-center gap-3'>
-                      <div className='p-2 bg-emerald-100 rounded-lg'>
-                        <Settings className='h-5 w-5 text-emerald-600' />
+                      <div className='p-2 bg-orange-100 rounded-lg'>
+                        <Settings className='h-5 w-5 text-orange-600' />
                       </div>
                       <div>
-                        <CardTitle className='text-xl text-slate-800'>
+                        <CardTitle className='text-xl text-gray-800'>
                           Feld-Einstellungen
                         </CardTitle>
-                        <CardDescription className='text-slate-600'>
+                        <CardDescription className='text-gray-600'>
                           Individuelle Spielzeiten für jedes Feld konfigurieren
                         </CardDescription>
                       </div>
@@ -2539,7 +2553,7 @@ export default function AdminPage () {
                         Alle löschen
                       </Button>
                       <Button
-                        className='bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6 transition-all duration-200'
+                        className='bg-orange-500 hover:bg-orange-600 text-white font-medium px-6 transition-all duration-200'
                         onClick={generateSpielplan}
                       >
                         <CalendarIcon className='h-4 w-4 mr-2' />
@@ -2556,7 +2570,7 @@ export default function AdminPage () {
                         className='p-4 border border-slate-200 rounded-lg space-y-3'
                       >
                         <div className='flex items-center gap-2'>
-                          <div className='w-3 h-3 bg-emerald-500 rounded-full'></div>
+                          <div className='w-3 h-3 bg-orange-500 rounded-full'></div>
                           <Label className='font-medium text-slate-700'>
                             {feld.name}
                           </Label>
@@ -2615,7 +2629,7 @@ export default function AdminPage () {
                                 checked
                               )
                             }
-                            className='data-[state=checked]:bg-emerald-600'
+                            className='data-[state=checked]:bg-orange-500'
                           />
                         </div>
 
@@ -2667,21 +2681,21 @@ export default function AdminPage () {
                 <CardContent className='p-6'>
                   {/* Tabs für verschiedene Tage */}
                   <div className='space-y-4'>
-                    {/* Dienstag */}
+                    {/* Erster Turniertag */}
                     <div className='border border-slate-200 rounded-lg p-4'>
                       <div className='flex items-center gap-2 mb-4'>
                         <div className='w-3 h-3 bg-blue-500 rounded-full'></div>
                         <Label className='font-medium text-slate-800'>
-                          Dienstag - 05.07.2025
+                          {tag1} - {new Date(turnierEinstellungen.turnierStartDatum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </Label>
                       </div>
                       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
                         {feldEinstellungen.map(feld => {
-                          const jahrgaengeDienstag =
-                            feld.erlaubteJahrgaengeProTag?.['2025-07-05'] || []
+                          const jahrgaengeTag1 =
+                            feld.erlaubteJahrgaengeProTag?.[turnierEinstellungen.turnierStartDatum] || []
                           return (
                             <div
-                              key={`${feld.id}-dienstag`}
+                              key={`${feld.id}-tag1`}
                               className='p-3 border border-slate-100 rounded-lg bg-slate-50'
                             >
                               <div className='text-sm font-medium text-slate-700 mb-2'>
@@ -2693,7 +2707,7 @@ export default function AdminPage () {
                                 onValueChange={value =>
                                   addJahrgangToFeldProTag(
                                     feld.id,
-                                    '2025-07-05',
+                                    turnierEinstellungen.turnierStartDatum,
                                     value
                                   )
                                 }
@@ -2704,7 +2718,7 @@ export default function AdminPage () {
                                 <SelectContent>
                                   {VERFÜGBARE_JAHRGÄNGE.filter(
                                     jahrgang =>
-                                      !jahrgaengeDienstag.includes(jahrgang)
+                                      !jahrgaengeTag1.includes(jahrgang)
                                   ).map(jahrgang => (
                                     <SelectItem key={jahrgang} value={jahrgang}>
                                       {jahrgang}
@@ -2715,20 +2729,20 @@ export default function AdminPage () {
 
                               {/* Zugewiesene Jahrgänge */}
                               <div className='flex flex-wrap gap-1'>
-                                {jahrgaengeDienstag.length === 0 ? (
+                                {jahrgaengeTag1.length === 0 ? (
                                   <span className='text-xs text-slate-500 italic'>
                                     Standard-Einstellungen
                                   </span>
                                 ) : (
-                                  jahrgaengeDienstag.map(jahrgang => (
+                                  jahrgaengeTag1.map(jahrgang => (
                                     <Badge
                                       key={jahrgang}
                                       variant='secondary'
-                                      className='text-xs px-1 py-0.5 bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer'
+                                      className='text-xs px-1 py-0.5 bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer'
                                       onClick={() =>
                                         removeJahrgangFromFeldProTag(
                                           feld.id,
-                                          '2025-07-05',
+                                          turnierEinstellungen.turnierStartDatum,
                                           jahrgang
                                         )
                                       }
@@ -2747,21 +2761,21 @@ export default function AdminPage () {
                       </div>
                     </div>
 
-                    {/* Mittwoch */}
+                    {/* Zweiter Turniertag */}
                     <div className='border border-slate-200 rounded-lg p-4'>
                       <div className='flex items-center gap-2 mb-4'>
                         <div className='w-3 h-3 bg-green-500 rounded-full'></div>
                         <Label className='font-medium text-slate-800'>
-                          Mittwoch - 06.07.2025
+                          {tag2} - {new Date(turnierEinstellungen.turnierEndDatum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                         </Label>
                       </div>
                       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
                         {feldEinstellungen.map(feld => {
-                          const jahrgaengeMittwoch =
-                            feld.erlaubteJahrgaengeProTag['2025-07-06'] || []
+                          const jahrgaengeTag2 =
+                            feld.erlaubteJahrgaengeProTag[turnierEinstellungen.turnierEndDatum] || []
                           return (
                             <div
-                              key={`${feld.id}-mittwoch`}
+                              key={`${feld.id}-tag2`}
                               className='p-3 border border-slate-100 rounded-lg bg-slate-50'
                             >
                               <div className='text-sm font-medium text-slate-700 mb-2'>
@@ -2773,7 +2787,7 @@ export default function AdminPage () {
                                 onValueChange={value =>
                                   addJahrgangToFeldProTag(
                                     feld.id,
-                                    '2025-07-06',
+                                    turnierEinstellungen.turnierEndDatum,
                                     value
                                   )
                                 }
@@ -2784,7 +2798,7 @@ export default function AdminPage () {
                                 <SelectContent>
                                   {VERFÜGBARE_JAHRGÄNGE.filter(
                                     jahrgang =>
-                                      !jahrgaengeMittwoch.includes(jahrgang)
+                                      !jahrgaengeTag2.includes(jahrgang)
                                   ).map(jahrgang => (
                                     <SelectItem key={jahrgang} value={jahrgang}>
                                       {jahrgang}
@@ -2795,20 +2809,20 @@ export default function AdminPage () {
 
                               {/* Zugewiesene Jahrgänge */}
                               <div className='flex flex-wrap gap-1'>
-                                {jahrgaengeMittwoch.length === 0 ? (
+                                {jahrgaengeTag2.length === 0 ? (
                                   <span className='text-xs text-slate-500 italic'>
                                     Standard-Einstellungen
                                   </span>
                                 ) : (
-                                  jahrgaengeMittwoch.map(jahrgang => (
+                                  jahrgaengeTag2.map(jahrgang => (
                                     <Badge
                                       key={jahrgang}
                                       variant='secondary'
-                                      className='text-xs px-1 py-0.5 bg-green-100 text-green-800 hover:bg-green-200 cursor-pointer'
+                                      className='text-xs px-1 py-0.5 bg-orange-100 text-orange-800 hover:bg-orange-200 cursor-pointer'
                                       onClick={() =>
                                         removeJahrgangFromFeldProTag(
                                           feld.id,
-                                          '2025-07-06',
+                                          turnierEinstellungen.turnierEndDatum,
                                           jahrgang
                                         )
                                       }
@@ -3025,32 +3039,55 @@ export default function AdminPage () {
                                       ` (2x${feld.spielzeit / 2}min)`}
                                   </div>
 
-                                  {/* Zugewiesene Jahrgänge anzeigen (nur lesen) */}
-                                  <div className='px-1 mt-1'>
-                                    <div className='text-xs text-slate-600 mb-1 font-medium'>
+                                  {/* Zugewiesene Jahrgänge anzeigen (tag-spezifisch) */}
+                                  <div className='mt-2'>
+                                    <div className='text-xs text-slate-600 mb-2 font-medium text-center'>
                                       Jahrgänge:
                                     </div>
-                                    <div className='flex flex-wrap gap-1'>
-                                      {feld.erlaubteJahrgaenge.length === 0 ? (
-                                        <span className='text-xs text-slate-500 italic'>
-                                          Alle Jahrgänge erlaubt
-                                        </span>
-                                      ) : (
-                                        feld.erlaubteJahrgaenge.map(
-                                          jahrgang => (
+                                    <div className='flex flex-wrap gap-1 justify-center'>
+                                      {(() => {
+                                        // Hole tag-spezifische Jahrgänge für das ausgewählte Datum
+                                        const tagSpezifischeJahrgaenge = 
+                                          feld.erlaubteJahrgaengeProTag?.[selectedDate] || []
+                                        
+                                        // Wenn tag-spezifische Einstellungen vorhanden sind, verwende diese
+                                        if (tagSpezifischeJahrgaenge.length > 0) {
+                                          return tagSpezifischeJahrgaenge.map(jahrgang => (
                                             <Badge
                                               key={jahrgang}
                                               variant='secondary'
-                                              className='text-xs px-1 py-0.5 bg-emerald-100 text-emerald-800'
+                                              className='text-xs px-1 py-0.5 bg-orange-100 text-orange-800'
+                                              title={`Tag-spezifisch für ${selectedDate}`}
                                             >
                                               {jahrgang.length > 8
-                                                ? jahrgang.substring(0, 8) +
-                                                  '...'
+                                                ? jahrgang.substring(0, 8) + '...'
                                                 : jahrgang}
                                             </Badge>
+                                          ))
+                                        }
+                                        
+                                        // Fallback: Standard-Jahrgänge oder "Alle erlaubt"
+                                        if (feld.erlaubteJahrgaenge.length === 0) {
+                                          return (
+                                            <span className='text-xs text-slate-500 italic'>
+                                              Alle Jahrgänge erlaubt
+                                            </span>
                                           )
-                                        )
-                                      )}
+                                        } else {
+                                          return feld.erlaubteJahrgaenge.map(jahrgang => (
+                                            <Badge
+                                              key={jahrgang}
+                                              variant='secondary'
+                                              className='text-xs px-1 py-0.5 bg-orange-100 text-orange-800'
+                                              title="Standard-Einstellung"
+                                            >
+                                              {jahrgang.length > 8
+                                                ? jahrgang.substring(0, 8) + '...'
+                                                : jahrgang}
+                                            </Badge>
+                                          ))
+                                        }
+                                      })()}
                                     </div>
                                   </div>
                                 </div>
@@ -3075,7 +3112,7 @@ export default function AdminPage () {
                               beginnen.
                             </p>
                             <Button
-                              className='bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6'
+                              className='bg-orange-500 hover:bg-orange-600 text-white font-medium px-6'
                               onClick={generateSpielplan}
                             >
                               <CalendarIcon className='h-4 w-4 mr-2' />
@@ -3656,11 +3693,11 @@ export default function AdminPage () {
                 <CardHeader className='pb-6 border-b border-slate-100'>
                   <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-3'>
-                      <div className='p-2 bg-emerald-100 rounded-lg'>
-                        <Users className='h-5 w-5 text-emerald-600' />
+                      <div className='p-2 bg-orange-100 rounded-lg'>
+                        <Users className='h-5 w-5 text-orange-600' />
                       </div>
                       <div>
-                        <CardTitle className='text-xl text-slate-800'>
+                        <CardTitle className='text-xl text-gray-800'>
                           Helfer-Anmeldungen
                         </CardTitle>
                         <CardDescription className='text-slate-600'>
@@ -3777,7 +3814,7 @@ export default function AdminPage () {
                                     }
                                     className={
                                       anmeldung.status === 'bestätigt'
-                                        ? 'bg-green-100 text-green-700'
+                                        ? 'bg-orange-100 text-orange-700'
                                         : anmeldung.status === 'abgesagt'
                                         ? 'bg-red-100 text-red-700'
                                         : 'bg-yellow-100 text-yellow-700'
@@ -4230,7 +4267,7 @@ export default function AdminPage () {
                                             }
                                             className={
                                               anmeldung.status === 'bestätigt'
-                                                ? 'bg-green-100 text-green-700'
+                                                ? 'bg-orange-100 text-orange-700'
                                                 : anmeldung.status ===
                                                   'abgesagt'
                                                 ? 'bg-red-100 text-red-700'
@@ -4423,11 +4460,11 @@ export default function AdminPage () {
               <Card className='bg-white border-slate-200 shadow-sm'>
                 <CardHeader className='pb-6 border-b border-slate-100'>
                   <div className='flex items-center gap-3'>
-                    <div className='p-2 bg-emerald-100 rounded-lg'>
-                      <Euro className='h-5 w-5 text-emerald-600' />
+                    <div className='p-2 bg-orange-100 rounded-lg'>
+                      <Euro className='h-5 w-5 text-orange-600' />
                     </div>
                     <div>
-                      <CardTitle className='text-xl text-slate-800'>
+                      <CardTitle className='text-xl text-gray-800'>
                         Preise & Zahlungen
                       </CardTitle>
                       <CardDescription className='text-slate-600'>
@@ -4619,7 +4656,7 @@ export default function AdminPage () {
                         />
                       </div>
                       <div className='flex items-center justify-center'>
-                        <Badge className='start-datum-badge bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200 px-3 py-1.5 text-sm transition-all duration-300'>
+                        <Badge className='start-datum-badge bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 px-3 py-1.5 text-sm transition-all duration-300'>
                           <CalendarIcon className='h-3.5 w-3.5 mr-2' />
                           {formatTurnierDate(
                             turnierEinstellungen.turnierStartDatum
@@ -4711,7 +4748,7 @@ export default function AdminPage () {
                         />
                       </div>
                       <div className='flex items-center justify-center'>
-                        <Badge className='end-datum-badge bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200 px-3 py-1.5 text-sm transition-all duration-300'>
+                        <Badge className='end-datum-badge bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200 px-3 py-1.5 text-sm transition-all duration-300'>
                           <CalendarIcon className='h-3.5 w-3.5 mr-2' />
                           {formatTurnierDate(
                             turnierEinstellungen.turnierEndDatum

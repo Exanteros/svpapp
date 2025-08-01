@@ -78,32 +78,32 @@ function getStatusBadge(spiel: Spiel) {
   switch (status) {
     case 'laufend':
       return (
-        <Badge variant="default" className="bg-green-500 text-white animate-pulse">
+        <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full animate-pulse inline-flex items-center">
           <Play className="w-3 h-3 mr-1" />
           Läuft
-        </Badge>
+        </span>
       );
     case 'halbzeit':
       return (
-        <Badge variant="default" className="bg-yellow-500 text-white">
+        <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <Pause className="w-3 h-3 mr-1" />
           Halbzeit
-        </Badge>
+        </span>
       );
     case 'abgeschlossen':
       return (
-        <Badge variant="outline" className="border-gray-400 text-gray-600">
+        <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <CheckCircle className="w-3 h-3 mr-1" />
           Beendet
-        </Badge>
+        </span>
       );
     case 'geplant':
     default:
       return (
-        <Badge variant="secondary" className="bg-blue-100 text-blue-600">
+        <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <Clock className="w-3 h-3 mr-1" />
           Geplant
-        </Badge>
+        </span>
       );
   }
 }
@@ -116,6 +116,22 @@ function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('de-DE', {
     weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+function getWeekdayName(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long'
+  });
+}
+
+function formatDateShort(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
@@ -261,11 +277,11 @@ export default function SpielplanPage() {
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="samstag" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Samstag ({formatDate(spielplanData.samstag.datum)})
+            {getWeekdayName(spielplanData.samstag.datum)} ({formatDateShort(spielplanData.samstag.datum)})
           </TabsTrigger>
           <TabsTrigger value="sonntag" className="flex items-center gap-2">
             <Calendar className="h-4 w-4" />
-            Sonntag ({formatDate(spielplanData.sonntag.datum)})
+            {getWeekdayName(spielplanData.sonntag.datum)} ({formatDateShort(spielplanData.sonntag.datum)})
           </TabsTrigger>
         </TabsList>
 

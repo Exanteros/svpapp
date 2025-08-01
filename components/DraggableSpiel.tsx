@@ -77,6 +77,22 @@ export function DraggableSpiel({
     }
   };
 
+  // Verbesserte Mobile-UX mit Touch-Feedback
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isAdmin && isMobile) {
+      const target = e.currentTarget as HTMLElement;
+      target.style.transform = 'scale(1.02)';
+      target.style.transition = 'transform 0.1s ease';
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (isAdmin && isMobile) {
+      const target = e.currentTarget as HTMLElement;
+      target.style.transform = 'scale(1)';
+    }
+  };
+
   if (isMobile) {
     return (
       <Card
@@ -88,52 +104,54 @@ export function DraggableSpiel({
           ${isAdmin ? 'border-blue-200 border-2' : 'border'}
           ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}
           transition-all duration-200 ease-in-out
-          ${isAdmin ? 'touch-manipulation' : ''}
+          ${isAdmin ? 'touch-manipulation select-none' : ''}
+          max-w-full overflow-hidden
         `}
         {...(isAdmin ? attributes : {})}
         {...(isAdmin ? listeners : {})}
-        onTouchStart={handleMobileTouch}
+        onTouchStart={isAdmin ? handleTouchStart : undefined}
+        onTouchEnd={isAdmin ? handleTouchEnd : undefined}
       >
         <CardContent className="p-3 sm:p-4">
           {isAdmin && (
-            <div className="flex items-center justify-center mb-2 py-1 bg-blue-50 rounded-md">
+            <div className="flex items-center justify-center mb-2 py-2 bg-blue-50 rounded-md">
               <GripVertical className="h-5 w-5 text-blue-500 mr-2" />
               <span className="text-xs text-blue-600 font-medium">Zum Verschieben antippen und ziehen</span>
             </div>
           )}
           
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex justify-between items-start mb-3 gap-2">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
               <Clock className="h-4 w-4 text-gray-500 flex-shrink-0" />
               {isAdmin ? (
                 <Input
                   type="time"
                   value={spiel.zeit}
                   onChange={handleTimeChange}
-                  className="w-28 h-9 text-base font-medium"
+                  className="w-24 sm:w-28 h-9 text-sm sm:text-base font-medium"
                   onClick={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span className="font-semibold text-lg">{spiel.zeit}</span>
+                <span className="font-semibold text-base sm:text-lg whitespace-nowrap">{spiel.zeit}</span>
               )}
               {selectedField === 'alle' && (
                 <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-md">
-                  <MapPin className="h-3 w-3 text-gray-500" />
-                  <span className="text-sm text-gray-600 font-medium">{spiel.feld}</span>
+                  <MapPin className="h-3 w-3 text-gray-500 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm text-gray-600 font-medium whitespace-nowrap">{spiel.feld}</span>
                 </div>
               )}
             </div>
-            <Badge variant="outline" className="text-xs flex-shrink-0">{spiel.kategorie}</Badge>
+            <Badge variant="outline" className="text-xs flex-shrink-0 whitespace-nowrap">{spiel.kategorie}</Badge>
           </div>
           
           <div className="space-y-3 mb-4">
-            <div className="text-center bg-gray-50 rounded-lg p-4">
+            <div className="text-center bg-gray-50 rounded-lg p-3 sm:p-4">
               <div className="font-medium text-xs text-gray-500 mb-2">Teams</div>
               <div className="space-y-2">
-                <div className="font-bold text-base text-gray-800">{spiel.team1}</div>
+                <div className="font-bold text-sm sm:text-base text-gray-800 break-words">{spiel.team1}</div>
                 <div className="text-gray-400 text-sm font-medium">vs</div>
-                <div className="font-bold text-base text-gray-800">{spiel.team2}</div>
+                <div className="font-bold text-sm sm:text-base text-gray-800 break-words">{spiel.team2}</div>
               </div>
             </div>
           </div>

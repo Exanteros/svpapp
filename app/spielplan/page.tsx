@@ -78,32 +78,32 @@ function getStatusBadge(spiel: Spiel) {
   switch (status) {
     case 'laufend':
       return (
-        <Badge variant="default" className="bg-green-500 text-white animate-pulse">
+        <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full animate-pulse inline-flex items-center">
           <Play className="w-3 h-3 mr-1" />
           Läuft
-        </Badge>
+        </span>
       );
     case 'halbzeit':
       return (
-        <Badge variant="default" className="bg-yellow-500 text-white">
+        <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <Pause className="w-3 h-3 mr-1" />
           Halbzeit
-        </Badge>
+        </span>
       );
     case 'abgeschlossen':
       return (
-        <Badge variant="outline" className="border-gray-400 text-gray-600">
+        <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <CheckCircle className="w-3 h-3 mr-1" />
           Beendet
-        </Badge>
+        </span>
       );
     case 'geplant':
     default:
       return (
-        <Badge variant="secondary" className="bg-blue-100 text-blue-600">
+        <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
           <Clock className="w-3 h-3 mr-1" />
           Geplant
-        </Badge>
+        </span>
       );
   }
 }
@@ -116,6 +116,22 @@ function formatDate(dateString: string): string {
   const date = new Date(dateString);
   return date.toLocaleDateString('de-DE', {
     weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+function getWeekdayName(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long'
+  });
+}
+
+function formatDateShort(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
@@ -158,30 +174,33 @@ export default function SpielplanPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="p-8 text-center">
-            <Clock className="h-12 w-12 mx-auto mb-4 text-gray-300 animate-spin" />
-            <p className="text-gray-600">Lade Spielplan...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 text-center max-w-md w-full mx-4">
+          <div className="relative w-12 h-12 mx-auto mb-4">
+            <div className="w-12 h-12 bg-orange-500 rounded-full animate-spin"></div>
+            <div className="absolute top-1.5 left-1.5 w-9 h-9 bg-white rounded-full opacity-30"></div>
+          </div>
+          <p className="text-gray-600">Lade Spielplan...</p>
+        </div>
       </div>
     );
   }
 
   if (!spielplanData) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card className="bg-red-50 border-red-200">
-          <CardContent className="p-8 text-center">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-            <p className="text-red-700">Fehler beim Laden des Spielplans</p>
-            <Button onClick={loadSpielplan} className="mt-4">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Erneut versuchen
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center max-w-md w-full mx-4">
+          <div className="relative w-12 h-12 mx-auto mb-4">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <AlertTriangle className="h-6 w-6 text-red-500" />
+            </div>
+          </div>
+          <p className="text-red-700 mb-4">Fehler beim Laden des Spielplans</p>
+          <Button onClick={loadSpielplan} className="bg-orange-500 hover:bg-orange-600 text-white">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Erneut versuchen
+          </Button>
+        </div>
       </div>
     );
   }
@@ -207,84 +226,104 @@ export default function SpielplanPage() {
   const timeSlots = Object.keys(groupedByTime).sort();
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Zurück
+      <header className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-orange-600 hover:bg-orange-50">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Zurück
+                </Button>
+              </Link>
+              <div className="flex items-center gap-3">
+                {/* Handball Ball Icon */}
+                <div className="relative w-8 h-8">
+                  <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
+                  <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Spielplan</h1>
+                  <p className="text-sm text-gray-600">
+                    Aktualisiert: {currentTime.toLocaleTimeString('de-DE')}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <Button onClick={loadSpielplan} variant="outline" size="sm" className="border-gray-300 text-gray-600 hover:bg-gray-50">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Aktualisieren
             </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-              <Trophy className="h-8 w-8 text-blue-600" />
-              Spielplan
-            </h1>
-            <p className="text-slate-600 mt-1">
-              Aktuelle Zeit: {currentTime.toLocaleTimeString('de-DE')}
-            </p>
           </div>
         </div>
-        <Button onClick={loadSpielplan} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Aktualisieren
-        </Button>
-      </div>
+      </header>
+
+      <div className="container mx-auto px-4 py-8 space-y-6">
 
       {/* Filter */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-slate-700">Feld filtern:</label>
-            <Select value={selectedField} onValueChange={setSelectedField}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="alle">Alle Felder</SelectItem>
-                {spielplanData.availableFields.map(field => (
-                  <SelectItem key={field} value={field}>{field}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="text-sm text-slate-600">
-              {filteredSpiele.length} Spiel(e) angezeigt
-            </div>
+      <div className="bg-gray-50 rounded-lg p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+            <label className="text-sm font-medium text-gray-900">Feld filtern:</label>
           </div>
-        </CardContent>
-      </Card>
+          <Select value={selectedField} onValueChange={setSelectedField}>
+            <SelectTrigger className="w-48 border-gray-200 bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="alle">Alle Felder</SelectItem>
+              {spielplanData.availableFields.map(field => (
+                <SelectItem key={field} value={field}>{field}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="text-sm text-gray-600 bg-white px-3 py-2 rounded-md border border-gray-200">
+            {filteredSpiele.length} Spiel(e) angezeigt
+          </div>
+        </div>
+      </div>
 
       {/* Tabs für Tage */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'samstag' | 'sonntag')}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="samstag" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-2 bg-gray-50 p-1 rounded-lg">
+          <TabsTrigger 
+            value="samstag" 
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-sm text-gray-600 font-medium"
+          >
             <Calendar className="h-4 w-4" />
-            Samstag ({formatDate(spielplanData.samstag.datum)})
+            {getWeekdayName(spielplanData.samstag.datum)} ({formatDateShort(spielplanData.samstag.datum)})
           </TabsTrigger>
-          <TabsTrigger value="sonntag" className="flex items-center gap-2">
+          <TabsTrigger 
+            value="sonntag" 
+            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-sm text-gray-600 font-medium"
+          >
             <Calendar className="h-4 w-4" />
-            Sonntag ({formatDate(spielplanData.sonntag.datum)})
+            {getWeekdayName(spielplanData.sonntag.datum)} ({formatDateShort(spielplanData.sonntag.datum)})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="space-y-6 mt-6">
           {timeSlots.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Trophy className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                  Keine Spiele gefunden
-                </h3>
-                <p className="text-gray-500">
-                  {selectedField === 'alle' 
-                    ? 'Für diesen Tag sind keine Spiele geplant.'
-                    : `Für ${selectedField} sind keine Spiele geplant.`
-                  }
-                </p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+              <div className="relative w-16 h-16 mx-auto mb-6">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                  <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
+                  <div className="absolute top-2 left-2 w-6 h-6 bg-white rounded-full opacity-30"></div>
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Keine Spiele gefunden
+              </h3>
+              <p className="text-gray-600">
+                {selectedField === 'alle' 
+                  ? 'Für diesen Tag sind keine Spiele geplant.'
+                  : `Für ${selectedField} sind keine Spiele geplant.`
+                }
+              </p>
+            </div>
           ) : (
             timeSlots.map(zeitSlot => {
               const spieleInSlot = groupedByTime[zeitSlot];
@@ -292,85 +331,88 @@ export default function SpielplanPage() {
               const halbzeitSpiele = spieleInSlot.filter(s => getGameStatus(s) === 'halbzeit').length;
               
               return (
-                <Card key={zeitSlot} className="border-slate-200">
-                  <CardHeader className="pb-4 border-b border-slate-100">
+                <div key={zeitSlot} className="bg-white rounded-lg border border-gray-200 shadow-sm">
+                  <div className="border-b border-gray-100 p-6">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-xl text-slate-800 flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-blue-600" />
-                        {formatTime(zeitSlot)} Uhr
-                      </CardTitle>
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          {formatTime(zeitSlot)} Uhr
+                        </h3>
+                      </div>
                       <div className="flex items-center gap-2">
                         {laufendeSpiele > 0 && (
-                          <Badge variant="default" className="bg-green-500 text-white">
+                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
                             {laufendeSpiele} läuft
-                          </Badge>
+                          </span>
                         )}
                         {halbzeitSpiele > 0 && (
-                          <Badge variant="default" className="bg-yellow-500 text-white">
+                          <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full">
                             {halbzeitSpiele} Halbzeit
-                          </Badge>
+                          </span>
                         )}
-                        <Badge variant="outline" className="text-slate-600">
+                        <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full">
                           {spieleInSlot.length} Spiel(e)
-                        </Badge>
+                        </span>
                       </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
+                  </div>
+                  <div className="p-0">
                     <Table>
                       <TableHeader>
-                        <TableRow className="border-slate-100">
-                          <TableHead className="w-24 text-slate-600">Status</TableHead>
-                          <TableHead className="w-24 text-slate-600">Feld</TableHead>
-                          <TableHead className="text-slate-600">Teams</TableHead>
-                          <TableHead className="w-32 text-slate-600">Kategorie</TableHead>
-                          <TableHead className="w-24 text-center text-slate-600">Ergebnis</TableHead>
+                        <TableRow className="border-gray-100">
+                          <TableHead className="w-24 text-gray-600">Status</TableHead>
+                          <TableHead className="w-24 text-gray-600">Feld</TableHead>
+                          <TableHead className="text-gray-600">Teams</TableHead>
+                          <TableHead className="w-32 text-gray-600">Kategorie</TableHead>
+                          <TableHead className="w-24 text-center text-gray-600">Ergebnis</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {spieleInSlot.map((spiel) => (
-                          <TableRow key={spiel.id} className="border-slate-100 hover:bg-slate-50">
+                          <TableRow key={spiel.id} className="border-gray-100 hover:bg-orange-50">
                             <TableCell className="py-4">
                               {getStatusBadge(spiel)}
                             </TableCell>
                             <TableCell className="font-medium">
-                              <Badge variant="outline" className="border-blue-300 text-blue-700">
-                                <MapPin className="w-3 h-3 mr-1" />
+                              <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">
+                                <MapPin className="w-3 h-3 mr-1 inline" />
                                 {spiel.feld}
-                              </Badge>
+                              </span>
                             </TableCell>
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
-                                <span className="text-slate-900">{spiel.team1}</span>
-                                <span className="text-slate-400">vs</span>
-                                <span className="text-slate-900">{spiel.team2}</span>
+                                <span className="text-gray-900">{spiel.team1}</span>
+                                <span className="text-gray-400">vs</span>
+                                <span className="text-gray-900">{spiel.team2}</span>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                              <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full">
                                 {spiel.kategorie}
-                              </Badge>
+                              </span>
                             </TableCell>
                             <TableCell className="text-center">
                               {spiel.ergebnis ? (
-                                <span className="font-mono font-semibold text-slate-900">
+                                <span className="font-mono font-semibold text-gray-900">
                                   {spiel.ergebnis}
                                 </span>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="text-gray-400">-</span>
                               )}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               );
             })
           )}
         </TabsContent>
       </Tabs>
+      </div>
     </div>
   );
 }
