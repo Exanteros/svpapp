@@ -12,7 +12,7 @@ module.exports = {
       
       // Memory management
       max_memory_restart: '700M', // Restart if memory exceeds 700MB (more conservative)
-      node_args: '--max-old-space-size=512 --gc-interval=100 --gc-global',
+      node_args: '--max-old-space-size=512 --gc-global',
       
       // Environment
       env_production: {
@@ -20,7 +20,7 @@ module.exports = {
         PORT: 3000,
         ENABLE_SMTP_SERVER: 'false', // Disable SMTP for better performance
         UV_THREADPOOL_SIZE: '2',
-        NODE_OPTIONS: '--max-old-space-size=512 --gc-interval=100',
+        NODE_OPTIONS: '--max-old-space-size=512',
         NEXT_TELEMETRY_DISABLED: '1',
       },
       

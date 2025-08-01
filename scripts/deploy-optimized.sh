@@ -15,7 +15,7 @@ if [ $MEMORY -lt 900 ]; then
 fi
 
 # Set memory-optimized environment
-export NODE_OPTIONS="--max-old-space-size=512 --gc-interval=100"
+export NODE_OPTIONS="--max-old-space-size=512"
 export NEXT_TELEMETRY_DISABLED=1
 
 echo "📦 Installing dependencies..."

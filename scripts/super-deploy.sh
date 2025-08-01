@@ -125,7 +125,7 @@ optimize_environment() {
     print_step "⚙️  Environment wird optimiert..."
     
     # Memory-optimized environment
-    export NODE_OPTIONS="--max-old-space-size=512 --gc-interval=100 --gc-global"
+    export NODE_OPTIONS="--max-old-space-size=512 --gc-global"
     export NEXT_TELEMETRY_DISABLED=1
     export UV_THREADPOOL_SIZE=2
     
@@ -134,7 +134,7 @@ optimize_environment() {
         print_warning ".env.production nicht gefunden - wird erstellt..."
         cat > .env.production << EOF
 NODE_ENV=production
-NODE_OPTIONS="--max-old-space-size=512 --gc-interval=100"
+NODE_OPTIONS="--max-old-space-size=512"
 NEXT_TELEMETRY_DISABLED=1
 UV_THREADPOOL_SIZE=2
 DB_POOL_SIZE=3
@@ -158,7 +158,7 @@ build_application() {
     
     # Build mit Memory Limits
     print_step "🔨 Build startet (das kann einige Minuten dauern)..."
-    NODE_OPTIONS="--max-old-space-size=700 --gc-interval=50" npm run build:prod
+    NODE_OPTIONS="--max-old-space-size=700" npm run build:prod
     
     if [ $? -eq 0 ]; then
         print_success "Build erfolgreich abgeschlossen"
