@@ -155,13 +155,15 @@ install_dependencies() {
         export npm_config_network_concurrency=1
         
         print_step "🐌 Langsamere Installation aufgrund wenig RAM..."
-        npm ci --only=production --prefer-offline --no-audit --no-fund --maxsockets=1
+        # ALLE Dependencies installieren für Build (nicht nur production)
+        npm ci --prefer-offline --no-audit --no-fund --maxsockets=1
     else
         # Standard Installation mit optimierten Einstellungen
         export NODE_OPTIONS="--max-old-space-size=400"
         export npm_config_maxsockets=5
         
-        npm ci --only=production --prefer-offline --no-audit --no-fund
+        # ALLE Dependencies installieren für Build (nicht nur production)
+        npm ci --prefer-offline --no-audit --no-fund
     fi
     
     if [ $? -eq 0 ]; then
@@ -213,6 +215,11 @@ build_application() {
     
     if [ $? -eq 0 ]; then
         print_success "Build erfolgreich abgeschlossen"
+        
+        # Nach erfolgreichem Build: Dev-Dependencies entfernen um Speicher zu sparen
+        print_step "🧹 Entferne Dev-Dependencies für Produktionsumgebung..."
+        npm prune --production
+        print_success "Dev-Dependencies entfernt"
     else
         print_error "Build fehlgeschlagen!"
         exit 1
