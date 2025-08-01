@@ -63,7 +63,22 @@ check_system() {
     SWAP=$(free -m | grep '^Swap:' | awk '{print $2}')
     if [ $SWAP -eq 0 ]; then
         print_warning "Kein Swap aktiviert! Für 1GB RAM Server empfohlen."
-        echo "💡 Swap erstellen: sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile"
+        echo "💡 Soll automatisch 1GB Swap erstellt werden? (y/n)"
+        read -t 10 -n 1 create_swap
+        echo ""
+        
+        if [ "$create_swap" = "y" ]; then
+            print_step "🔄 Erstelle 1GB Swap-Datei..."
+            if sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile; then
+                print_success "Swap erfolgreich erstellt und aktiviert"
+                # Permanent machen
+                echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null
+            else
+                print_warning "Swap-Erstellung fehlgeschlagen, fortfahren ohne Swap"
+            fi
+        else
+            print_warning "Fortfahren ohne Swap - Installation könnte fehlschlagen"
+        fi
     else
         print_success "Swap aktiv: ${SWAP}MB"
     fi
@@ -89,6 +104,16 @@ check_system() {
 
 install_dependencies() {
     print_step "📦 Abhängigkeiten werden installiert..."
+    
+    # Cleanup vor Installation um Speicher zu sparen
+    print_step "🧹 Cleanup für mehr verfügbaren Speicher..."
+    
+    # NPM Cache leeren
+    npm cache clean --force 2>/dev/null || true
+    
+    # Temporäre Dateien löschen
+    sudo rm -rf /tmp/npm-* 2>/dev/null || true
+    sudo rm -rf ~/.npm/_cacache 2>/dev/null || true
     
     # Node.js Check
     if command -v node &> /dev/null; then
@@ -116,9 +141,35 @@ install_dependencies() {
     
     # Dependencies installieren
     print_step "📥 NPM Dependencies werden installiert..."
-    export NODE_OPTIONS="--max-old-space-size=512"
-    npm ci --only=production --prefer-offline --silent
-    print_success "Dependencies installiert"
+    
+    # Prüfe verfügbaren RAM vor Installation
+    AVAILABLE_RAM=$(free -m | awk 'NR==2{printf "%.0f", $7}' 2>/dev/null || echo "unknown")
+    
+    if [ "$AVAILABLE_RAM" != "unknown" ] && [ "$AVAILABLE_RAM" -lt 400 ]; then
+        print_warning "Wenig verfügbarer RAM (${AVAILABLE_RAM}MB). Installation könnte fehlschlagen."
+        echo "💡 Tipp: Andere Prozesse beenden oder Swap aktivieren"
+        
+        # Sehr konservative Einstellungen für wenig RAM
+        export NODE_OPTIONS="--max-old-space-size=256"
+        export npm_config_maxsockets=1
+        export npm_config_network_concurrency=1
+        
+        print_step "🐌 Langsamere Installation aufgrund wenig RAM..."
+        npm ci --only=production --prefer-offline --no-audit --no-fund --maxsockets=1
+    else
+        # Standard Installation mit optimierten Einstellungen
+        export NODE_OPTIONS="--max-old-space-size=400"
+        export npm_config_maxsockets=5
+        
+        npm ci --only=production --prefer-offline --no-audit --no-fund
+    fi
+    
+    if [ $? -eq 0 ]; then
+        print_success "Dependencies erfolgreich installiert"
+    else
+        print_error "Fehler bei der Installation der Dependencies!"
+        exit 1
+    fi
 }
 
 optimize_environment() {
