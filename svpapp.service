@@ -1,0 +1,32 @@
+[Unit]
+Description=SVP App - Handball Tournament Management
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/svpapp
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=512 --gc-interval=100
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/npm run start:prod
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=svpapp
+
+# Memory and process limits
+LimitNOFILE=65536
+MemoryLimit=800M
+CPUQuota=100%
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/svpapp
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

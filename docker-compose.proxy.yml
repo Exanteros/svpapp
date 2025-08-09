@@ -1,0 +1,46 @@
+version: '3.8'
+
+networks:
+  web:
+    external: true
+  internal:
+    external: false
+
+services:
+  svpapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    volumes:
+      # Mount database to persist data
+      - ./data:/app/data
+      # Mount sessions directory
+      - ./sessions:/app/sessions
+    networks:
+      - web
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      # Traefik labels (wenn du Traefik als Reverse Proxy verwendest)
+      - "traefik.enable=true"
+      - "traefik.http.routers.svpapp.rule=Host(`your-domain.com`)"
+      - "traefik.http.routers.svpapp.entrypoints=websecure"
+      - "traefik.http.routers.svpapp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.svpapp.loadbalancer.server.port=3000"
+      - "traefik.docker.network=web"
+      
+      # Nginx Proxy Manager labels (falls du NPM verwendest)
+      - "nginx.proxy.host=your-domain.com"
+      - "nginx.proxy.port=3000"
