@@ -89,12 +89,33 @@ export function verifyAdminSession(token?: string): boolean {
   return verifySessionToken(token);
 }
 
-export async function authenticateAdmin(request: Request): Promise<boolean> {
+export async function authenticateAdmin(request: Request): Promise<{
+  success: boolean;
+  error?: string;
+  status?: number;
+  headers?: Record<string, string>;
+}> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get('admin-session')?.value;
   
-  if (!sessionToken) return false;
-  return verifyAdminSession(sessionToken);
+  if (!sessionToken) {
+    return {
+      success: false,
+      error: 'Kein Session-Token gefunden',
+      status: 401
+    };
+  }
+  
+  const isValid = verifyAdminSession(sessionToken);
+  if (!isValid) {
+    return {
+      success: false,
+      error: 'Ungültiger oder abgelaufener Session-Token',
+      status: 401
+    };
+  }
+  
+  return { success: true };
 }
 
 // Response-Hilfsfunktionen
@@ -102,8 +123,20 @@ export function createAuthResponse(data: any, status: number = 200): NextRespons
   return NextResponse.json(data, { status });
 }
 
-export function createErrorResponse(message: string, status: number = 400): NextResponse {
-  return NextResponse.json({ error: message }, { status });
+export function createErrorResponse(
+  message: string, 
+  status: number = 400, 
+  headers?: Record<string, string>
+): NextResponse {
+  const response = NextResponse.json({ error: message }, { status });
+  
+  if (headers) {
+    Object.entries(headers).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+  }
+  
+  return response;
 }
 
 export function createUnauthorizedResponse(): NextResponse {
