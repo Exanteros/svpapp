@@ -1,0 +1,40 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff7ed;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bgGradient)" rx="64"/>
+  
+  <!-- Main Circle (Orange) -->
+  <circle cx="256" cy="200" r="80" fill="#f97316"/>
+  
+  <!-- White Inner Circle with Opacity -->
+  <circle cx="256" cy="200" r="48" fill="#ffffff" opacity="0.3"/>
+  
+  <!-- Grass field -->
+  <rect x="80" y="320" width="352" height="120" fill="#22c55e" rx="8"/>
+  <rect x="88" y="328" width="336" height="104" fill="#16a34a" rx="4"/>
+  
+  <!-- Goal posts -->
+  <rect x="100" y="300" width="8" height="40" fill="#ffffff"/>
+  <rect x="404" y="300" width="8" height="40" fill="#ffffff"/>
+  <rect x="100" y="300" width="312" height="8" fill="#ffffff"/>
+  
+  <!-- Center line -->
+  <line x1="256" y1="328" x2="256" y2="432" stroke="#ffffff" stroke-width="3"/>
+  
+  <!-- Small decorative circles -->
+  <circle cx="180" cy="140" r="12" fill="#f97316" opacity="0.2"/>
+  <circle cx="332" cy="160" r="10" fill="#f97316" opacity="0.3"/>
+  <circle cx="200" cy="260" r="8" fill="#f97316" opacity="0.4"/>
+  <circle cx="312" cy="240" r="9" fill="#f97316" opacity="0.25"/>
+  
+  <!-- Text -->
+  <text x="256" y="480" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="bold" fill="#1f2937">SVP</text>
+  <text x="256" y="500" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#6b7280">TURNIER</text>
+</svg>

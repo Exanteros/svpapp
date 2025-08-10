@@ -1,0 +1,39 @@
+<svg width="390" height="844" viewBox="0 0 390 844" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff7ed;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="390" height="844" fill="url(#bgGradient)"/>
+  
+  <!-- Main Circle (Orange/Red) -->
+  <circle cx="195" cy="350" r="60" fill="#f97316"/>
+  
+  <!-- White Inner Circle with Opacity -->
+  <circle cx="195" cy="350" r="36" fill="#ffffff" opacity="0.3"/>
+  
+  <!-- Logo Text -->
+  <text x="195" y="480" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="32" font-weight="700" fill="#1f2937">
+    SV Puschendorf
+  </text>
+  
+  <!-- Subtitle -->
+  <text x="195" y="520" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="400" fill="#6b7280">
+    Rasenturnier 2025
+  </text>
+  
+  <!-- Small decorative elements -->
+  <circle cx="120" cy="280" r="8" fill="#f97316" opacity="0.2"/>
+  <circle cx="270" cy="320" r="6" fill="#f97316" opacity="0.3"/>
+  <circle cx="150" cy="420" r="4" fill="#f97316" opacity="0.4"/>
+  <circle cx="240" cy="450" r="5" fill="#f97316" opacity="0.25"/>
+  
+  <!-- Footer -->
+  <text x="195" y="780" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="400" fill="#9ca3af">
+    Sportverein Puschendorf e.V.
+  </text>
+</svg>
