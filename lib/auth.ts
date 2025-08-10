@@ -119,8 +119,20 @@ export async function authenticateAdmin(request: Request): Promise<{
 }
 
 // Response-Hilfsfunktionen
-export function createAuthResponse(data: any, status: number = 200): NextResponse {
-  return NextResponse.json(data, { status });
+export function createAuthResponse(
+  data: any, 
+  status: number = 200, 
+  headers?: Record<string, string>
+): NextResponse {
+  const response = NextResponse.json(data, { status });
+  
+  if (headers) {
+    Object.entries(headers).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+  }
+  
+  return response;
 }
 
 export function createErrorResponse(

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       statistiken,
       anmeldungen,
       settings
-    }, auth.headers);
+    }, 200, auth.headers);
   } catch (error) {
     console.error('❌ Fehler beim Laden der Admin-Daten:', error);
     return createErrorResponse('Interner Serverfehler', 500);
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         message: 'Status erfolgreich aktualisiert',
         anmeldungId: body.anmeldungId,
         newStatus: body.status
-      }, auth.headers);
+      }, 200, auth.headers);
     }
     
     if (body.action === 'save_settings') {
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       return createAuthResponse({
         message: 'Einstellungen erfolgreich gespeichert',
         settings: body.settings
-      }, auth.headers);
+      }, 200, auth.headers);
     }
     
     return createErrorResponse('Ungültige Aktion', 400);

@@ -32,9 +32,9 @@ export class EmailSender {
       });
       
       return {
-        success: result,
-        messageId: result ? 'sent' : undefined,
-        error: result ? undefined : 'Failed to send email'
+        success: result.success,
+        messageId: result.messageId,
+        error: result.error
       };
     } catch (error) {
       return {
