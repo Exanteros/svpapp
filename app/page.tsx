@@ -2,9 +2,11 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Trophy, Users, Settings, UserPlus, Menu, X } from "lucide-react";
+import { Calendar, Trophy, Users, Settings, UserPlus, Menu, X, Heart } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import CookieBanner from "@/components/CookieBanner";
+import { useCookieConsent } from "@/hooks/use-cookie-consent";
 
 interface TurnierEinstellungen {
   turnierStartDatum: string;
@@ -47,6 +49,9 @@ export default function HomePage() {
     sonntagEndzeit: '17:00'
   });
 
+  // Cookie-Consent Hook
+  const { hasConsent, functionalAllowed, setCookie, setStorage } = useCookieConsent();
+
   // Body Click Handler für Mobile Menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -76,6 +81,15 @@ export default function HomePage() {
           const data = await response.json();
           if (data) {
             setTurnierEinstellungen(data);
+            
+            // Funktionale Cookies: Turnier-Einstellungen für bessere Performance cachen
+            if (functionalAllowed) {
+              setStorage('svp_turnier_cache', JSON.stringify({
+                data,
+                timestamp: new Date().toISOString(),
+                ttl: 1000 * 60 * 60 // 1 Stunde
+              }), 'functional');
+            }
           }
         }
       } catch (error) {
@@ -83,8 +97,26 @@ export default function HomePage() {
       }
     }
     
+    // Prüfen ob gecachte Daten verwendet werden können (nur wenn funktionale Cookies erlaubt)
+    if (functionalAllowed) {
+      try {
+        const cached = localStorage.getItem('svp_turnier_cache');
+        if (cached) {
+          const { data, timestamp, ttl } = JSON.parse(cached);
+          const age = new Date().getTime() - new Date(timestamp).getTime();
+          
+          if (age < ttl) {
+            setTurnierEinstellungen(data);
+            return; // Verwende Cache, lade nicht neu
+          }
+        }
+      } catch (error) {
+        console.error('Fehler beim Lesen des Turnier-Cache:', error);
+      }
+    }
+    
     loadTurnierEinstellungen();
-  }, []);
+  }, [functionalAllowed, setStorage]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -298,9 +330,9 @@ export default function HomePage() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-6xl mx-auto text-center">
             <h3 className="text-2xl sm:text-3xl font-bold mb-8 sm:mb-12 text-gray-900">Schnellzugriff</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-6 max-w-4xl mx-auto">
               
-              <Link href="/spielplan" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1">
+              <Link href="/spielplan" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1 w-full sm:w-60 flex-shrink-0">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-50 rounded-lg flex items-center justify-center mb-3 sm:mb-4 mx-auto group-hover:bg-orange-100 transition-colors">
                   <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
                 </div>
@@ -308,7 +340,7 @@ export default function HomePage() {
                 <p className="text-xs sm:text-sm text-gray-600">Aktuelle Spiele und Zeiten</p>
               </Link>
 
-              <Link href="/ergebnisse" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1">
+              <Link href="/ergebnisse" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1 w-full sm:w-60 flex-shrink-0">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-50 rounded-lg flex items-center justify-center mb-3 sm:mb-4 mx-auto group-hover:bg-orange-100 transition-colors">
                   <Trophy className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
                 </div>
@@ -316,7 +348,7 @@ export default function HomePage() {
                 <p className="text-xs sm:text-sm text-gray-600">Live-Ergebnisse verfolgen</p>
               </Link>
 
-              <Link href="/anmeldung" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1">
+              <Link href="/anmeldung" className="group bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1 w-full sm:w-60 flex-shrink-0">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-50 rounded-lg flex items-center justify-center mb-3 sm:mb-4 mx-auto group-hover:bg-orange-100 transition-colors">
                   <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
                 </div>
@@ -329,24 +361,177 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-50 border-t border-gray-200">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              {/* Handball Ball Icon */}
-              <div className="relative w-8 h-8">
-                <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
-                <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
-              </div>
-              <span className="font-semibold text-gray-900">SV Puschendorf</span>
-            </div>
-            <p className="text-gray-600 text-sm text-center sm:text-left">
-              © 2025 SV Puschendorf. Alle Rechte vorbehalten.
+      {/* Sponsors Section */}
+      <section className="bg-gray-50 py-12 sm:py-16">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto text-center">
+            <h3 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-gray-900">Unsere Sponsoren</h3>
+            <p className="text-lg text-gray-600 mb-8 sm:mb-12 max-w-3xl mx-auto">
+              Wir danken unseren treuen Sponsoren für ihre Unterstützung. Ohne sie wäre dieses Turnier nicht möglich.
             </p>
+            
+            {/* Sponsor Logos Placeholder */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 sm:gap-8 mb-8 sm:mb-12">
+              {/* Placeholder for sponsor logos */}
+              <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 flex items-center justify-center h-20 sm:h-24">
+                <span className="text-gray-400 text-sm sm:text-base font-medium">Sponsor Logo</span>
+              </div>
+              <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 flex items-center justify-center h-20 sm:h-24">
+                <span className="text-gray-400 text-sm sm:text-base font-medium">Sponsor Logo</span>
+              </div>
+              <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 flex items-center justify-center h-20 sm:h-24">
+                <span className="text-gray-400 text-sm sm:text-base font-medium">Sponsor Logo</span>
+              </div>
+              <div className="bg-white rounded-lg p-4 sm:p-6 shadow-sm border border-gray-100 flex items-center justify-center h-20 sm:h-24">
+                <span className="text-gray-400 text-sm sm:text-base font-medium">Sponsor Logo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+          {/* Main Footer Content */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+            
+            {/* Organization Info */}
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                {/* Handball Ball Icon */}
+                <div className="relative w-8 h-8">
+                  <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
+                  <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
+                </div>
+                <span className="font-bold text-lg">SV Puschendorf</span>
+              </div>
+              <p className="text-gray-300 text-sm mb-4">
+                Ein Angebot der <strong>Contimore UG</strong><br />
+                in Kooperation mit der Handballabteilung des
+                <strong> Sportverein Puschendorf 1949 e.V.</strong>
+              </p>
+            </div>
+
+            {/* Quick Links */}
+            <div>
+              <h4 className="font-semibold text-white mb-4">Navigation</h4>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <Link href="/spielplan" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Spielplan
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/ergebnisse" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Ergebnisse
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/anmeldung" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Anmeldung
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <h4 className="font-semibold text-white mb-4">Kontakt</h4>
+              <ul className="space-y-2 text-sm text-gray-300">
+                <li>
+                  <span className="block">E-Mail:</span>
+                  <a 
+                    href="#" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const email = 'die.goetzelmaenner' + '@' + 'gmail.com';
+                      window.location.href = 'mailto:' + email;
+                    }}
+                    className="text-orange-400 hover:text-orange-300 transition-colors cursor-pointer"
+                  >
+                    die.goetzelmaenner [at] gmail [dot] com
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Legal Documents */}
+            <div>
+              <h4 className="font-semibold text-white mb-4">Rechtliches</h4>
+              <ul className="space-y-2 text-sm">
+                <li>
+                  <Link href="/impressum" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Impressum
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/datenschutz" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Datenschutzerklärung
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/agb" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    AGB
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/widerrufsrecht" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Widerrufsrecht
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/cookie-richtlinie" className="text-gray-300 hover:text-orange-400 transition-colors">
+                    Cookie-Richtlinie
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="border-t border-gray-700 pt-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+              <p className="text-gray-400 text-sm text-center sm:text-left">
+                © 2025 Contimore UG (haftungsbeschränkt) & Sportverein Puschendorf 1949 e.V. Alle Rechte vorbehalten.
+              </p>
+              <div className="flex items-center gap-4 text-sm">
+                <Link href="/impressum" className="text-gray-400 hover:text-orange-400 transition-colors">
+                  Impressum
+                </Link>
+                <span className="text-gray-600">|</span>
+                <Link href="/datenschutz" className="text-gray-400 hover:text-orange-400 transition-colors">
+                  Datenschutz
+                </Link>
+                <span className="text-gray-600">|</span>
+                <Link href="/agb" className="text-gray-400 hover:text-orange-400 transition-colors">
+                  AGB
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Cookie Banner */}
+      <CookieBanner 
+        onAcceptAll={() => {
+          console.log('Alle Cookies akzeptiert - funktionale Features aktiviert');
+          // Hier könnten weitere funktionale Features aktiviert werden
+        }}
+        onRejectOptional={() => {
+          console.log('Nur notwendige Cookies akzeptiert');
+          // Cache und andere funktionale Daten löschen
+          localStorage.removeItem('svp_turnier_cache');
+        }}
+        onSettings={(consent) => {
+          console.log('Cookie-Einstellungen gespeichert:', consent);
+          if (!consent.functional) {
+            // Funktionale Daten löschen wenn abgewählt
+            localStorage.removeItem('svp_turnier_cache');
+          }
+        }}
+      />
     </div>
   );
 }
