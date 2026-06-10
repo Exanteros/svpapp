@@ -67,9 +67,12 @@ Nützliche Varianten:
 
 ```bash
 ./docker-run.sh --admin-email admin@example.de --app-url https://turnier.example.de
+./docker-run.sh --no-publish --network web --app-url https://turnier.example.de
 ./docker-run.sh --reset-admin --show-admin
 docker compose --env-file .env.docker up -d --build
 ```
+
+Wenn mehrere Next.js-Apps parallel laufen, darf jede App intern Port `3000` verwenden. Nur der Host-Port muss eindeutig sein. Hinter Traefik, Nginx Proxy Manager oder einem anderen Docker-Reverse-Proxy ist daher `--no-publish --network <proxy-netzwerk>` meist die richtige Variante; der Proxy leitet dann auf `svpapp:3000`.
 
 ## 📧 E-Mail-Konfiguration
 

@@ -23,6 +23,13 @@ APP_PORT_OVERRIDE="${APP_PORT:-}"
 BIND_ADDRESS_OVERRIDE="${BIND_ADDRESS:-}"
 APP_URL_OVERRIDE="${NEXT_PUBLIC_APP_URL:-${NEXT_PUBLIC_SITE_URL:-}}"
 COOKIE_SECURE_OVERRIDE="${SESSION_COOKIE_SECURE:-}"
+PUBLISH_PORT_OVERRIDE="${PUBLISH_PORT:-}"
+DOCKER_NETWORK_OVERRIDE="${DOCKER_NETWORK:-}"
+PORT_WAS_EXPLICIT=false
+
+if [ -n "${APP_PORT:-}" ]; then
+  PORT_WAS_EXPLICIT=true
+fi
 
 if [ -t 1 ]; then
   RED='\033[0;31m'
@@ -48,6 +55,9 @@ Options:
   --app-url URL            Public app URL, for example https://svp.example.de.
   --port PORT              Host port to publish. Default: 3000.
   --bind ADDRESS           Host bind address. Default: 0.0.0.0.
+  --no-publish             Do not bind a host port. Use this behind a reverse proxy.
+  --publish                Bind the host port, overriding PUBLISH_PORT=false.
+  --network NAME           Connect the container to an existing Docker network.
   --env-file FILE          Docker env file to create/use. Default: .env.docker.
   --no-build               Reuse the existing Docker image.
   --reset-admin            Generate a new admin password.
@@ -57,6 +67,7 @@ Options:
 Examples:
   ./docker-run.sh
   ./docker-run.sh --admin-email admin@example.de --app-url https://turnier.example.de
+  ./docker-run.sh --no-publish --network web --app-url https://turnier.example.de
   ./docker-run.sh --reset-admin --show-admin
 EOF
 }
@@ -91,11 +102,25 @@ while [ "$#" -gt 0 ]; do
     --port)
       need_option_value "$@"
       APP_PORT_OVERRIDE="$2"
+      PORT_WAS_EXPLICIT=true
       shift 2
       ;;
     --bind)
       need_option_value "$@"
       BIND_ADDRESS_OVERRIDE="$2"
+      shift 2
+      ;;
+    --no-publish)
+      PUBLISH_PORT_OVERRIDE=false
+      shift
+      ;;
+    --publish)
+      PUBLISH_PORT_OVERRIDE=true
+      shift
+      ;;
+    --network)
+      need_option_value "$@"
+      DOCKER_NETWORK_OVERRIDE="$2"
       shift 2
       ;;
     --env-file)
@@ -136,7 +161,7 @@ success() {
 }
 
 warn() {
-  echo -e "${YELLOW}[WARN]${NC} $1"
+  echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 die() {
@@ -206,6 +231,20 @@ validate_port() {
   fi
 }
 
+normalize_bool() {
+  local key="$1"
+  local value="$2"
+
+  case "$value" in
+    true|false)
+      echo "$value"
+      ;;
+    *)
+      die "$key must be true or false."
+      ;;
+  esac
+}
+
 infer_cookie_secure() {
   local app_url="$1"
 
@@ -233,6 +272,8 @@ write_env_file() {
   local admin_api_key="$7"
   local referee_card_secret="$8"
   local session_cookie_secure="$9"
+  local publish_port="${10}"
+  local docker_network="${11}"
   local tmp_file
 
   mkdir -p "$(dirname "$ENV_FILE")"
@@ -249,6 +290,12 @@ write_env_file() {
     echo "HOSTNAME=0.0.0.0"
     echo "APP_PORT=$app_port"
     echo "BIND_ADDRESS=$bind_address"
+    echo "PUBLISH_PORT=$publish_port"
+    if [ -n "$docker_network" ]; then
+      echo "DOCKER_NETWORK=$docker_network"
+    else
+      echo "# DOCKER_NETWORK=web"
+    fi
     echo "NEXT_PUBLIC_APP_URL=$app_url"
     echo "DATABASE_PATH=/app/data/database.sqlite"
     echo "DB_TIMEOUT=$(read_env_value DB_TIMEOUT || true)"
@@ -315,9 +362,13 @@ ensure_env_file() {
   local existing_app_port
   local existing_bind_address
   local existing_app_url
+  local existing_publish_port
+  local existing_docker_network
   local app_port
   local bind_address
   local app_url
+  local publish_port
+  local docker_network
   local admin_email
   local admin_password
   local session_secret
@@ -333,11 +384,16 @@ ensure_env_file() {
   existing_app_port="$(read_env_value APP_PORT || true)"
   existing_bind_address="$(read_env_value BIND_ADDRESS || true)"
   existing_app_url="$(read_env_value NEXT_PUBLIC_APP_URL || true)"
+  existing_publish_port="$(read_env_value PUBLISH_PORT || true)"
+  existing_docker_network="$(read_env_value DOCKER_NETWORK || true)"
 
   app_port="${APP_PORT_OVERRIDE:-${existing_app_port:-3000}}"
   validate_port "$app_port"
 
   bind_address="${BIND_ADDRESS_OVERRIDE:-${existing_bind_address:-0.0.0.0}}"
+  publish_port="${PUBLISH_PORT_OVERRIDE:-${existing_publish_port:-true}}"
+  publish_port="$(normalize_bool "PUBLISH_PORT" "$publish_port")"
+  docker_network="${DOCKER_NETWORK_OVERRIDE:-${existing_docker_network:-}}"
   app_url="${APP_URL_OVERRIDE:-${existing_app_url:-http://localhost:${app_port}}}"
   admin_email="${ADMIN_EMAIL_OVERRIDE:-${existing_admin_email:-}}"
 
@@ -378,6 +434,8 @@ ensure_env_file() {
 
   validate_plain_env_value "APP_PORT" "$app_port"
   validate_plain_env_value "BIND_ADDRESS" "$bind_address"
+  validate_plain_env_value "PUBLISH_PORT" "$publish_port"
+  validate_plain_env_value "DOCKER_NETWORK" "$docker_network"
   validate_plain_env_value "NEXT_PUBLIC_APP_URL" "$app_url"
   validate_plain_env_value "ADMIN_EMAIL" "$admin_email"
   validate_plain_env_value "ADMIN_PASSWORD" "$admin_password"
@@ -394,7 +452,9 @@ ensure_env_file() {
     "$session_secret" \
     "$admin_api_key" \
     "$referee_card_secret" \
-    "$session_cookie_secure"
+    "$session_cookie_secure" \
+    "$publish_port" \
+    "$docker_network"
 
   success "Docker environment written to $ENV_FILE"
 }
@@ -423,22 +483,152 @@ stop_existing_container() {
   fi
 }
 
+port_is_in_use() {
+  local port="$1"
+
+  if command -v ss >/dev/null 2>&1; then
+    if ss -ltn 2>/dev/null | awk -v port=":$port" '$4 ~ port "$" { found = 1 } END { exit found ? 0 : 1 }'; then
+      return 0
+    fi
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    if netstat -ltn 2>/dev/null | awk -v port=":$port" '$4 ~ port "$" { found = 1 } END { exit found ? 0 : 1 }'; then
+      return 0
+    fi
+  fi
+
+  if (: </dev/tcp/127.0.0.1/"$port") >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+find_available_port() {
+  local start_port="$1"
+  local candidate="$((start_port + 1))"
+  local last_port="$((start_port + 50))"
+
+  while [ "$candidate" -le "$last_port" ]; do
+    if ! port_is_in_use "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+
+    candidate="$((candidate + 1))"
+  done
+
+  return 1
+}
+
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp_file
+
+  validate_plain_env_value "$key" "$value"
+  tmp_file="$(mktemp "${ENV_FILE}.tmp.XXXXXX")"
+
+  awk -v key="$key" -v value="$value" '
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$ENV_FILE" > "$tmp_file"
+
+  chmod 600 "$tmp_file"
+  mv "$tmp_file" "$ENV_FILE"
+}
+
+ensure_host_port_available() {
+  local bind_address="$1"
+  local requested_port="$2"
+  local selected_port
+  local current_url
+  local new_url
+
+  if ! port_is_in_use "$requested_port"; then
+    echo "$requested_port"
+    return 0
+  fi
+
+  if [ "$PORT_WAS_EXPLICIT" = true ]; then
+    die "Host port $requested_port is already in use. Stop the process using it, or run: ./docker-run.sh --port $((requested_port + 1))"
+  fi
+
+  selected_port="$(find_available_port "$requested_port")" || die "Host port $requested_port is in use and no free port was found in the next 50 ports. Run ./docker-run.sh --port PORT with a free port."
+
+  warn "Host port $requested_port is already in use; using $selected_port instead."
+  set_env_value "APP_PORT" "$selected_port"
+
+  current_url="$(read_env_value NEXT_PUBLIC_APP_URL || true)"
+
+  case "$current_url" in
+    ""|"http://localhost:${requested_port}"|"http://127.0.0.1:${requested_port}")
+      new_url="http://localhost:${selected_port}"
+      set_env_value "NEXT_PUBLIC_APP_URL" "$new_url"
+      set_env_value "SESSION_COOKIE_SECURE" "$(infer_cookie_secure "$new_url")"
+      ;;
+    *)
+      warn "Keeping NEXT_PUBLIC_APP_URL=$current_url. Update your reverse proxy if it should point at port $selected_port."
+      ;;
+  esac
+
+  echo "$selected_port"
+}
+
 print_admin_summary() {
   local admin_email
   local admin_password
+  local app_url
+  local publish_port
+  local app_port
+  local docker_network
 
   admin_email="$(read_env_value ADMIN_EMAIL || true)"
   admin_password="$(read_env_value ADMIN_PASSWORD || true)"
+  app_url="$(read_env_value NEXT_PUBLIC_APP_URL || true)"
+  publish_port="$(read_env_value PUBLISH_PORT || true)"
+  app_port="$(read_env_value APP_PORT || true)"
+  docker_network="$(read_env_value DOCKER_NETWORK || true)"
 
   echo ""
   echo "Admin login:"
-  echo "  URL:      $(read_env_value NEXT_PUBLIC_APP_URL || true)/admin/login"
+  echo "  URL:      ${app_url}/admin/login"
   echo "  Email:    $admin_email"
 
   if [ "${ADMIN_PASSWORD_WAS_GENERATED:-false}" = true ] || [ "$SHOW_ADMIN" = true ]; then
     echo "  Password: $admin_password"
   else
     echo "  Password: kept from $ENV_FILE (use --show-admin to print it, --reset-admin to rotate it)"
+  fi
+
+  if [ "$publish_port" = false ]; then
+    echo ""
+    echo "Reverse proxy target:"
+    echo "  Container: $CONTAINER_NAME"
+    echo "  Port:      3000"
+    if [ -n "$docker_network" ]; then
+      echo "  Network:   $docker_network"
+    else
+      echo "  Network:   default bridge (use --network NAME if your proxy uses a shared network)"
+    fi
+  else
+    echo "  Host port: $app_port"
   fi
 }
 
@@ -455,6 +645,7 @@ ensure_env_file
 
 if [ "$BUILD_IMAGE" = true ]; then
   info "Building Docker image $IMAGE_NAME..."
+  export BUILDX_GIT_INFO="${BUILDX_GIT_INFO:-false}"
   docker build -t "$IMAGE_NAME" .
   success "Image built: $IMAGE_NAME"
 else
@@ -466,17 +657,38 @@ stop_existing_container
 
 APP_PORT="$(read_env_value APP_PORT || true)"
 BIND_ADDRESS="$(read_env_value BIND_ADDRESS || true)"
+PUBLISH_PORT="$(read_env_value PUBLISH_PORT || true)"
+DOCKER_NETWORK="$(read_env_value DOCKER_NETWORK || true)"
 BIND_ADDRESS="${BIND_ADDRESS:-0.0.0.0}"
+PUBLISH_PORT="${PUBLISH_PORT:-true}"
+PUBLISH_PORT="$(normalize_bool "PUBLISH_PORT" "$PUBLISH_PORT")"
 
-info "Starting $CONTAINER_NAME on ${BIND_ADDRESS}:${APP_PORT}..."
-docker run -d \
-  --name "$CONTAINER_NAME" \
-  --env-file "$ENV_FILE" \
-  -p "${BIND_ADDRESS}:${APP_PORT}:3000" \
-  -v "$APP_DIR/data:/app/data" \
-  -v "$APP_DIR/sessions:/app/sessions" \
-  --restart unless-stopped \
-  "$IMAGE_NAME" >/dev/null
+if [ -n "$DOCKER_NETWORK" ] && ! docker network inspect "$DOCKER_NETWORK" >/dev/null 2>&1; then
+  die "Docker network '$DOCKER_NETWORK' was not found. Create it with: docker network create $DOCKER_NETWORK"
+fi
+
+docker_run_args=(
+  -d
+  --name "$CONTAINER_NAME"
+  --env-file "$ENV_FILE"
+  -v "$APP_DIR/data:/app/data"
+  -v "$APP_DIR/sessions:/app/sessions"
+  --restart unless-stopped
+)
+
+if [ -n "$DOCKER_NETWORK" ]; then
+  docker_run_args+=(--network "$DOCKER_NETWORK")
+fi
+
+if [ "$PUBLISH_PORT" = true ]; then
+  APP_PORT="$(ensure_host_port_available "$BIND_ADDRESS" "$APP_PORT")"
+  docker_run_args+=(-p "${BIND_ADDRESS}:${APP_PORT}:3000")
+  info "Starting $CONTAINER_NAME on ${BIND_ADDRESS}:${APP_PORT}..."
+else
+  info "Starting $CONTAINER_NAME without a published host port. Proxy to ${CONTAINER_NAME}:3000."
+fi
+
+docker run "${docker_run_args[@]}" "$IMAGE_NAME" >/dev/null
 
 success "Container started."
 print_admin_summary
