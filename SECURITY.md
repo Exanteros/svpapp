@@ -246,7 +246,7 @@ ALLOWED_IPS=ihre.büro.ip.adresse,ihre.zuhause.ip.adresse
   ```env
   NODE_ENV=development
   NEXT_PUBLIC_APP_URL=http://localhost:3002
-  ADMIN_API_KEY=svp-admin-2025-secure-key
+  ADMIN_API_KEY=<mit-openssl-rand-base64-32-generieren>
   ```
 - Für Debug-Informationen fügen Sie hinzu:
   ```env

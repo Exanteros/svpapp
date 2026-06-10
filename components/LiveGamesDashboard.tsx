@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Play, Timer, Trophy, Maximize, Minimize, AlertTriangle } from 'lucide-react';
+import { Clock, ClipboardEdit, Pause, Play, Square, Timer, Trophy, Maximize, Minimize, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatScheduleCategoryLabel } from '@/lib/tournament';
 
 interface Spiel {
   id: string;
@@ -29,6 +30,12 @@ interface FeldEinstellung {
   halbzeitpause: number;
   zweiHalbzeiten: boolean;
   erlaubteJahrgaenge: string[];
+  einstellungenProTag?: Record<string, {
+    spielzeit: number;
+    pausenzeit: number;
+    halbzeitpause: number;
+    zweiHalbzeiten: boolean;
+  }>;
 }
 
 interface LiveGame extends Spiel {
@@ -42,7 +49,20 @@ interface LiveGame extends Spiel {
   feldInfo: FeldEinstellung;
 }
 
-export default function LiveGamesDashboard() {
+interface StoredLiveTimer {
+  liveTime?: string;
+  status?: string;
+  startTime?: number;
+  elapsedTime?: number;
+  isSecondHalf?: boolean;
+  halbzeitStartTime?: number;
+}
+
+interface LiveGamesDashboardProps {
+  onOpenResults?: () => void;
+}
+
+export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboardProps = {}) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [liveGames, setLiveGames] = useState<LiveGame[]>([]);
   const [nextGames, setNextGames] = useState<LiveGame[]>([]);
@@ -136,8 +156,9 @@ export default function LiveGamesDashboard() {
       // Lade nächste Spiele (für Durchsagen)
       const upcomingGames = nextSlot ? todaysGames.filter((spiel: Spiel) => spiel.zeit === nextSlot) : [];
 
-      setLiveGames(convertToLiveGames(currentGames));
-      setNextGames(convertToLiveGames(upcomingGames));
+      const liveStatus = data.liveStatus || {};
+      setLiveGames(convertToLiveGames(currentGames, liveStatus));
+      setNextGames(convertToLiveGames(upcomingGames, liveStatus));
       setLoading(false);
 
       console.log(`✅ Spiele geladen - Aktuell: ${currentGames.length}, Nächste: ${upcomingGames.length}`);
@@ -147,10 +168,17 @@ export default function LiveGamesDashboard() {
     }
   };
 
-  const convertToLiveGames = (spiele: Spiel[]): LiveGame[] => {
+  useEffect(() => {
+    const handleScoreSaved = () => loadGames();
+
+    window.addEventListener('svp:score-saved', handleScoreSaved);
+    return () => window.removeEventListener('svp:score-saved', handleScoreSaved);
+  }, [feldEinstellungen]);
+
+  const convertToLiveGames = (spiele: Spiel[], liveTimers: Record<string, StoredLiveTimer> = {}): LiveGame[] => {
     return spiele.map(spiel => {
       // Finde Feldinfo
-      const feldInfo = findFeldInfo(spiel.feld);
+      const feldInfo = findFeldInfo(spiel);
       
       // Bestimme Status
       let liveStatus: 'ready' | 'running' | 'finished' | 'halftime' = 'ready';
@@ -158,15 +186,17 @@ export default function LiveGamesDashboard() {
       else if (spiel.status === 'laufend') liveStatus = 'running';
       else if (spiel.status === 'halbzeit') liveStatus = 'halftime';
 
-      // Hole gespeicherte Timer-Daten
-      const savedData = getGameTimerFromStorage(spiel.id);
+      const savedData = liveTimers[spiel.id] || {};
+      const elapsedTime = liveTimers[spiel.id]?.startTime && liveTimers[spiel.id]?.status === 'laufend'
+        ? Math.floor((Date.now() - Number(liveTimers[spiel.id].startTime)) / 1000)
+        : Number(savedData.elapsedTime || 0);
 
       return {
         ...spiel,
         liveStatus,
         startTime: savedData.startTime,
-        elapsedTime: savedData.elapsedTime,
-        isSecondHalf: savedData.isSecondHalf,
+        elapsedTime,
+        isSecondHalf: Boolean(savedData.isSecondHalf),
         halbzeitStartTime: savedData.halbzeitStartTime,
         spielzeit: feldInfo.spielzeit,
         zweiHalbzeiten: feldInfo.zweiHalbzeiten,
@@ -175,7 +205,8 @@ export default function LiveGamesDashboard() {
     });
   };
 
-  const findFeldInfo = (feldName: string): FeldEinstellung => {
+  const findFeldInfo = (spiel: Spiel): FeldEinstellung => {
+    const feldName = spiel.feld;
     const feldNameNorm = feldName.trim().toLowerCase();
     
     // Direkte Namenssuche
@@ -199,7 +230,13 @@ export default function LiveGamesDashboard() {
       return { id: '0', name: feldName, spielzeit: 15, pausenzeit: 3, halbzeitpause: 5, zweiHalbzeiten: false, erlaubteJahrgaenge: [] };
     }
     
-    return feldInfo;
+    return getFieldSettingsForDate(feldInfo, spiel.datum);
+  };
+
+  const getFieldSettingsForDate = (field: FeldEinstellung, date: string): FeldEinstellung => {
+    const daySettings = field.einstellungenProTag?.[date];
+
+    return daySettings ? { ...field, ...daySettings } : field;
   };
 
   const findCurrentTimeSlot = (timeSlots: string[]): string => {
@@ -247,26 +284,24 @@ export default function LiveGamesDashboard() {
     console.log(`🔄 Auto-Halbzeit für ${game.team1} vs ${game.team2} auf ${game.feld}`);
     
     try {
+      const halbzeitStartTime = Date.now();
+      const elapsedTime = game.startTime ? Math.floor((Date.now() - game.startTime) / 1000) : game.elapsedTime;
+
       // Update in lokaler State
       setLiveGames(prev => prev.map(g => 
         g.id === game.id 
-          ? { ...g, liveStatus: 'halftime', halbzeitStartTime: Date.now() }
+          ? { ...g, liveStatus: 'halftime', elapsedTime, halbzeitStartTime }
           : g
       ));
 
       // Update in Datenbank
-      await fetch('/api/spielplan/live', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spielId: game.id, status: 'halbzeit' })
-      });
-
-      // Timer-Daten speichern
-      saveGameTimerToStorage(game.id, {
-        startTime: game.startTime!,
-        elapsedTime: game.elapsedTime,
+      await postLiveUpdate({
+        spielId: game.id,
+        status: 'halbzeit',
+        startTime: game.startTime,
+        elapsedTime,
         isSecondHalf: false,
-        halbzeitStartTime: Date.now()
+        halbzeitStartTime,
       });
 
       toast.info(`Halbzeitpause auf ${game.feld}!`);
@@ -277,7 +312,7 @@ export default function LiveGamesDashboard() {
 
   const autoEndGame = async (game: LiveGame) => {
     console.log(`🏁 Auto-Ende für ${game.team1} vs ${game.team2} auf ${game.feld}`);
-    
+
     try {
       // Update in lokaler State
       setLiveGames(prev => prev.map(g => 
@@ -287,19 +322,105 @@ export default function LiveGamesDashboard() {
       ));
 
       // Update in Datenbank
-      await fetch('/api/spielplan/live', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spielId: game.id, status: 'beendet' })
-      });
-
-      // Timer-Daten löschen
-      removeGameTimerFromStorage(game.id);
+      await postLiveUpdate({ spielId: game.id, status: 'beendet' });
 
       toast.success(`Spiel auf ${game.feld} beendet!`);
     } catch (error) {
       console.error('Fehler bei Auto-Ende:', error);
     }
+  };
+
+  const postLiveUpdate = async (payload: Record<string, unknown>) => {
+    const response = await fetch('/api/spielplan/live', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  };
+
+  const startSingleGame = async (game: LiveGame) => {
+    const startTime = Date.now();
+    const isSecondHalf = game.liveStatus === 'halftime';
+
+    try {
+      await postLiveUpdate({
+        spielId: game.id,
+        status: 'laufend',
+        liveTime: '00:00',
+        startTime,
+        elapsedTime: 0,
+        isSecondHalf,
+        halbzeitStartTime: game.halbzeitStartTime,
+      });
+
+      setLiveGames(prev => prev.map(g =>
+        g.id === game.id
+          ? { ...g, liveStatus: 'running', startTime, elapsedTime: 0, isSecondHalf }
+          : g
+      ));
+
+      toast.success(isSecondHalf ? `2. Halbzeit auf ${game.feld} gestartet` : `Spiel auf ${game.feld} gestartet`);
+    } catch (error) {
+      console.error('Fehler beim Starten des Spiels:', error);
+      toast.error('Spiel konnte nicht gestartet werden');
+    }
+  };
+
+  const moveGameToHalftime = async (game: LiveGame) => {
+    const halbzeitStartTime = Date.now();
+    const elapsedTime = game.startTime ? Math.floor((Date.now() - game.startTime) / 1000) : game.elapsedTime;
+
+    try {
+      await postLiveUpdate({
+        spielId: game.id,
+        status: 'halbzeit',
+        startTime: game.startTime,
+        elapsedTime,
+        isSecondHalf: false,
+        halbzeitStartTime,
+      });
+
+      setLiveGames(prev => prev.map(g =>
+        g.id === game.id
+          ? { ...g, liveStatus: 'halftime', elapsedTime, halbzeitStartTime }
+          : g
+      ));
+
+      toast.info(`Halbzeit auf ${game.feld}`);
+    } catch (error) {
+      console.error('Fehler beim Setzen der Halbzeit:', error);
+      toast.error('Halbzeit konnte nicht gesetzt werden');
+    }
+  };
+
+  const endSingleGame = async (game: LiveGame) => {
+    try {
+      await postLiveUpdate({ spielId: game.id, status: 'beendet' });
+
+      setLiveGames(prev => prev.map(g =>
+        g.id === game.id
+          ? { ...g, liveStatus: 'finished' }
+          : g
+      ));
+
+      toast.success(`Spiel auf ${game.feld} beendet`);
+    } catch (error) {
+      console.error('Fehler beim Beenden des Spiels:', error);
+      toast.error('Spiel konnte nicht beendet werden');
+    }
+  };
+
+  const openResultEntry = () => {
+    if (!onOpenResults) {
+      toast.info('Ergebnisse im Ergebnis-Panel eintragen');
+      return;
+    }
+
+    onOpenResults();
   };
 
   const startAllGames = async () => {
@@ -325,16 +446,12 @@ export default function LiveGamesDashboard() {
           body: JSON.stringify({ 
             spielId: game.id, 
             status: 'laufend',
-            liveTime: '00:00'
+            liveTime: '00:00',
+            startTime,
+            elapsedTime: isSecondHalf ? game.elapsedTime : 0,
+            isSecondHalf,
+            halbzeitStartTime: game.halbzeitStartTime,
           })
-        });
-
-        // Timer-Daten speichern
-        saveGameTimerToStorage(game.id, {
-          startTime: isSecondHalf ? startTime : startTime,
-          elapsedTime: isSecondHalf ? game.elapsedTime : 0,
-          isSecondHalf,
-          halbzeitStartTime: game.halbzeitStartTime
         });
 
         return { ...game, isSecondHalf };
@@ -439,66 +556,37 @@ export default function LiveGamesDashboard() {
 
   const getProgressColor = (progress: number, isLastMinute: boolean): string => {
     if (isLastMinute) return 'bg-red-500';
-    if (progress > 75) return 'bg-orange-500';
-    if (progress > 50) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  // LocalStorage Funktionen
-  const getGameTimerFromStorage = (gameId: string) => {
-    try {
-      const saved = localStorage.getItem(`game-timer-${gameId}`);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (error) {
-      console.warn('Fehler beim Laden der Timer-Daten:', error);
-    }
-    return { startTime: undefined, elapsedTime: 0, isSecondHalf: false, halbzeitStartTime: undefined };
-  };
-
-  const saveGameTimerToStorage = (gameId: string, data: any) => {
-    try {
-      localStorage.setItem(`game-timer-${gameId}`, JSON.stringify(data));
-    } catch (error) {
-      console.warn('Fehler beim Speichern der Timer-Daten:', error);
-    }
-  };
-
-  const removeGameTimerFromStorage = (gameId: string) => {
-    try {
-      localStorage.removeItem(`game-timer-${gameId}`);
-    } catch (error) {
-      console.warn('Fehler beim Löschen der Timer-Daten:', error);
-    }
+    if (progress > 75) return 'bg-[#35401f]';
+    if (progress > 50) return 'bg-[#5e6d35]';
+    return 'bg-[#87935d]';
   };
 
   if (loading) {
     return (
-      <Card className="bg-white border-slate-200 shadow-sm">
+      <Card className="bg-white border-stone-200 shadow-sm">
         <CardContent className="p-8 text-center">
-          <Clock className="h-12 w-12 mx-auto mb-4 text-gray-300 animate-spin" />
-          <p className="text-gray-600">Lade Live-Dashboard...</p>
+          <Clock className="h-12 w-12 mx-auto mb-4 text-stone-300 animate-spin" />
+          <p className="text-stone-600">Lade Live-Dashboard...</p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className={`space-y-4 sm:space-y-6 ${isFullscreen ? 'fixed inset-0 bg-white z-50 p-4 overflow-auto' : ''}`}>
+    <div className={`space-y-4 sm:space-y-6 ${isFullscreen ? 'fixed inset-0 bg-white z-50 overflow-auto p-2 sm:p-4' : ''}`}>
       {/* Header mit Uhr */}
-      <Card className="bg-gradient-to-br from-blue-50 to-indigo-100 border-blue-200 shadow-lg">
+      <Card className="border-[#d9dec8] bg-[#f6f7f1] shadow-sm">
         <CardContent className="p-3 sm:p-6 text-center">
           <div className="flex flex-col sm:flex-row items-center justify-between mb-2 sm:mb-4 gap-2">
-            <div className="flex items-center">
-              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mr-2 sm:mr-3" />
-              <h1 className="text-lg sm:text-2xl font-bold text-blue-800">Live Dashboard</h1>
+            <div className="flex min-w-0 items-center">
+              <Clock className="h-6 w-6 shrink-0 sm:h-8 sm:w-8 text-[#5e6d35] mr-2 sm:mr-3" />
+              <h1 className="truncate text-lg sm:text-2xl font-bold text-[#35401f]">Live Dashboard</h1>
             </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="border-blue-300 text-blue-600 hover:bg-blue-50"
+              className="w-full border-[#d9dec8] text-[#4f5d2f] hover:bg-[#eef1e5] sm:w-auto"
             >
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
               <span className="ml-1 hidden sm:inline">
@@ -506,8 +594,8 @@ export default function LiveGamesDashboard() {
               </span>
             </Button>
           </div>
-          <div className={`font-mono font-bold text-blue-900 mb-1 sm:mb-2 ${
-            isFullscreen ? 'text-6xl sm:text-8xl' : 'text-3xl sm:text-6xl'
+          <div className={`font-mono font-bold text-[#35401f] mb-1 sm:mb-2 ${
+            isFullscreen ? 'text-5xl sm:text-8xl' : 'text-3xl sm:text-6xl'
           }`}>
             {currentTime.toLocaleTimeString('de-DE', { 
               hour: '2-digit', 
@@ -515,7 +603,7 @@ export default function LiveGamesDashboard() {
               second: '2-digit' 
             })}
           </div>
-          <p className="text-blue-700 text-sm sm:text-lg">
+          <p className="text-[#4f5d2f] text-sm sm:text-lg">
             {currentTime.toLocaleDateString('de-DE', { 
               weekday: 'long', 
               day: '2-digit', 
@@ -527,19 +615,19 @@ export default function LiveGamesDashboard() {
       </Card>
 
       {/* Aktuelle Spiele */}
-      <Card className="bg-white border-slate-200 shadow-sm">
-        <CardHeader className="pb-3 sm:pb-4 border-b border-slate-100">
+      <Card className="bg-white border-stone-200 shadow-sm">
+        <CardHeader className="pb-3 sm:pb-4 border-b border-stone-100">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="p-1.5 sm:p-2 rounded-lg bg-green-100">
-                <Timer className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="shrink-0 p-1.5 sm:p-2 rounded-lg bg-[#eef1e5]">
+                <Timer className="h-4 w-4 sm:h-5 sm:w-5 text-[#5e6d35]" />
               </div>
-              <div>
-                <CardTitle className="text-lg sm:text-xl text-slate-800">
+              <div className="min-w-0">
+                <CardTitle className="text-lg sm:text-xl text-stone-900">
                   Aktuelle Spiele
                   <span className="hidden sm:inline"> - {currentTimeSlot} Uhr</span>
                 </CardTitle>
-                <p className="text-slate-600 text-xs sm:text-sm">
+                <p className="text-stone-600 text-xs sm:text-sm">
                   <span className="sm:hidden">{currentTimeSlot} Uhr | </span>
                   {liveGames.length} Spiel(e) | Läuft: {liveGames.filter(g => g.liveStatus === 'running').length}
                   <span className="hidden sm:inline"> | 
@@ -553,7 +641,7 @@ export default function LiveGamesDashboard() {
               {liveGames.some(g => g.liveStatus === 'ready' || g.liveStatus === 'halftime') && (
                 <Button
                   onClick={startAllGames}
-                  className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
+                  className="bg-[#5e6d35] hover:bg-[#4f5d2f] text-white w-full sm:w-auto"
                   size="sm"
                 >
                   <Play className="h-4 w-4 mr-2" />
@@ -567,7 +655,7 @@ export default function LiveGamesDashboard() {
                 variant="outline"
                 size="sm"
                 onClick={loadGames}
-                className="border-slate-300 w-full sm:w-auto"
+                className="border-stone-300 w-full sm:w-auto"
               >
                 <Clock className="h-4 w-4 mr-2" />
                 <span className="sm:hidden">Update</span>
@@ -579,25 +667,26 @@ export default function LiveGamesDashboard() {
         <CardContent className="p-3 sm:p-6">
           {liveGames.length === 0 ? (
             <div className="text-center py-8 sm:py-12">
-              <Trophy className="h-8 w-8 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-gray-400" />
-              <p className="text-gray-700 text-base sm:text-lg">Keine aktuellen Spiele</p>
+              <Trophy className="h-8 w-8 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-stone-400" />
+              <p className="text-stone-700 text-base sm:text-lg">Keine aktuellen Spiele</p>
             </div>
           ) : (
             <div className={`grid gap-3 sm:gap-4 ${
-              isFullscreen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 sm:grid-cols-1 lg:grid-cols-2'
+              isFullscreen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 xl:grid-cols-2'
             }`}>
               {liveGames.map((game) => {
                 const { progress, isLastMinute } = getGameProgress(game);
-                const statusColor = game.liveStatus === 'running' ? 'bg-green-100 text-green-800' :
-                                  game.liveStatus === 'halftime' ? 'bg-yellow-100 text-yellow-800' :
-                                  game.liveStatus === 'finished' ? 'bg-gray-100 text-gray-800' :
-                                  'bg-blue-100 text-blue-800';
+                const categoryLabel = formatScheduleCategoryLabel(game.kategorie);
+                const statusColor = game.liveStatus === 'running' ? 'bg-[#eef1e5] text-[#35401f]' :
+                                  game.liveStatus === 'halftime' ? 'bg-amber-100 text-amber-900' :
+                                  game.liveStatus === 'finished' ? 'bg-stone-100 text-stone-800' :
+                                  'bg-stone-100 text-stone-800';
 
                 return (
-                  <Card key={game.id} className={`border-2 ${isLastMinute ? 'border-red-400 animate-pulse' : 'border-slate-200'}`}>
+                  <Card key={game.id} className={`min-w-0 border-2 ${isLastMinute ? 'border-red-400 animate-pulse' : 'border-stone-200'}`}>
                     <CardHeader className="pb-2 sm:pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1 sm:gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-2">
                           <Badge className={`${statusColor} text-xs sm:text-sm`}>
                             {game.feld}
                           </Badge>
@@ -609,13 +698,13 @@ export default function LiveGamesDashboard() {
                             </Badge>
                           )}
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          <span className="hidden sm:inline">{game.kategorie}</span>
-                          <span className="sm:hidden">{game.kategorie.substring(0, 8)}...</span>
+                        <Badge variant="outline" className="max-w-full truncate text-xs">
+                          <span className="hidden sm:inline truncate">{categoryLabel}</span>
+                          <span className="sm:hidden truncate">{categoryLabel.length > 10 ? `${categoryLabel.substring(0, 10)}...` : categoryLabel}</span>
                         </Badge>
                       </div>
                       <div className="text-center">
-                        <div className={`font-bold ${
+                        <div className={`break-words font-bold leading-tight ${
                           isFullscreen ? 'text-xl sm:text-2xl' : 'text-sm sm:text-lg'
                         }`}>
                           {game.team1} vs {game.team2}
@@ -630,13 +719,13 @@ export default function LiveGamesDashboard() {
                     <CardContent className="pt-0 px-3 sm:px-6 pb-3 sm:pb-6">
                       {game.liveStatus === 'running' && (
                         <div className="space-y-2">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="w-full bg-stone-200 rounded-full h-2">
                             <div 
                               className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(progress, isLastMinute)}`}
                               style={{ width: `${progress}%` }}
                             />
                           </div>
-                          <div className="text-xs text-gray-600 text-center">
+                          <div className="text-xs text-stone-600 text-center">
                             {Math.round(progress)}%
                             <span className="hidden sm:inline"> | {game.zweiHalbzeiten ? (game.isSecondHalf ? '2. Halbzeit' : '1. Halbzeit') : 'Spielzeit'}</span>
                           </div>
@@ -644,29 +733,62 @@ export default function LiveGamesDashboard() {
                       )}
                       
                       {game.liveStatus === 'halftime' && (
-                        <div className="text-center p-2 sm:p-4 bg-yellow-50 rounded-lg">
-                          <div className="text-yellow-800 font-semibold text-sm sm:text-base">🏃‍♂️ Halbzeitpause</div>
-                          <div className="text-xs sm:text-sm text-yellow-700">Wartet auf nächsten Start</div>
+                        <div className="text-center p-2 sm:p-4 bg-amber-50 rounded-lg">
+                          <div className="text-amber-900 font-semibold text-sm sm:text-base">Halbzeitpause</div>
+                          <div className="text-xs sm:text-sm text-amber-800">Wartet auf nächsten Start</div>
                         </div>
                       )}
 
                       {game.liveStatus === 'finished' && (
-                        <div className="text-center p-2 sm:p-4 bg-gray-50 rounded-lg">
-                          <div className="text-gray-800 font-semibold text-sm sm:text-base">🏁 Spiel beendet</div>
+                        <div className="text-center p-2 sm:p-4 bg-stone-50 rounded-lg">
+                          <div className="text-stone-800 font-semibold text-sm sm:text-base">Spiel beendet</div>
                           {game.ergebnis && (
-                            <div className="text-xs sm:text-sm text-gray-600">{game.ergebnis}</div>
+                            <div className="text-xs sm:text-sm text-stone-600">{game.ergebnis}</div>
                           )}
                         </div>
                       )}
 
                       {game.liveStatus === 'ready' && (
-                        <div className="text-center p-2 sm:p-4 bg-blue-50 rounded-lg">
-                          <div className="text-blue-800 font-semibold text-sm sm:text-base">⏸️ Bereit zum Start</div>
-                          <div className="text-xs sm:text-sm text-blue-700">
+                        <div className="text-center p-2 sm:p-4 bg-[#f6f7f1] rounded-lg">
+                          <div className="text-[#35401f] font-semibold text-sm sm:text-base">Bereit zum Start</div>
+                          <div className="text-xs sm:text-sm text-[#4f5d2f]">
                             Spielzeit: {game.spielzeit} min {game.zweiHalbzeiten ? '(2 × ' + game.spielzeit/2 + ' min)' : ''}
                           </div>
                         </div>
                       )}
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:flex xl:flex-wrap xl:justify-center">
+                        {game.liveStatus === 'ready' && (
+                          <Button size="sm" className="bg-[#5e6d35] text-white hover:bg-[#4f5d2f]" onClick={() => startSingleGame(game)}>
+                            <Play className="h-4 w-4" />
+                            Start
+                          </Button>
+                        )}
+                        {game.liveStatus === 'running' && game.zweiHalbzeiten && !game.isSecondHalf && (
+                          <Button size="sm" variant="outline" onClick={() => moveGameToHalftime(game)}>
+                            <Pause className="h-4 w-4" />
+                            Halbzeit
+                          </Button>
+                        )}
+                        {game.liveStatus === 'halftime' && (
+                          <Button size="sm" className="bg-[#5e6d35] text-white hover:bg-[#4f5d2f]" onClick={() => startSingleGame(game)}>
+                            <Play className="h-4 w-4" />
+                            Fortsetzen
+                          </Button>
+                        )}
+                        {game.liveStatus === 'running' && (
+                          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => endSingleGame(game)}>
+                            <Square className="h-4 w-4" />
+                            Beenden
+                          </Button>
+                        )}
+                        {game.liveStatus !== 'ready' && (
+                          <Button size="sm" variant="outline" onClick={openResultEntry}>
+                            <ClipboardEdit className="h-4 w-4" />
+                            Ergebnis setzen
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -678,18 +800,18 @@ export default function LiveGamesDashboard() {
 
       {/* Nächste Spiele (für Durchsagen) */}
       {nextGames.length > 0 && (
-        <Card className="bg-blue-50 border-blue-200 shadow-sm">
-          <CardHeader className="pb-3 sm:pb-4 border-b border-blue-100">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="p-1.5 sm:p-2 rounded-lg bg-blue-100">
-                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+        <Card className="bg-stone-50 border-stone-200 shadow-sm">
+          <CardHeader className="pb-3 sm:pb-4 border-b border-stone-100">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="shrink-0 p-1.5 sm:p-2 rounded-lg bg-[#eef1e5]">
+                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-[#5e6d35]" />
               </div>
-              <div>
-                <CardTitle className="text-lg sm:text-xl text-blue-800">
+              <div className="min-w-0">
+                <CardTitle className="text-lg sm:text-xl text-stone-900">
                   Nächste Spiele
                   <span className="hidden sm:inline"> - {nextTimeSlot} Uhr</span>
                 </CardTitle>
-                <p className="text-blue-600 text-xs sm:text-sm">
+                <p className="text-stone-600 text-xs sm:text-sm">
                   <span className="sm:hidden">{nextTimeSlot} Uhr | </span>
                   {nextGames.length} Spiel(e)
                   <span className="hidden sm:inline"> für Durchsagen vorbereiten</span>
@@ -699,29 +821,33 @@ export default function LiveGamesDashboard() {
           </CardHeader>
           <CardContent className="p-3 sm:p-6">
             <div className={`grid gap-2 sm:gap-3 ${
-              isFullscreen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 sm:grid-cols-1 lg:grid-cols-2'
+              isFullscreen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 xl:grid-cols-2'
             }`}>
-              {nextGames.map((game) => (
-                <div key={game.id} className="p-3 sm:p-4 bg-white rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <Badge variant="outline" className="border-blue-300 text-blue-700 text-xs sm:text-sm">
-                      {game.feld}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs border-blue-200 text-blue-600">
-                      <span className="hidden sm:inline">{game.kategorie}</span>
-                      <span className="sm:hidden">{game.kategorie.substring(0, 8)}...</span>
-                    </Badge>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-semibold text-blue-900 text-sm sm:text-base">
-                      {game.team1} vs {game.team2}
+              {nextGames.map((game) => {
+                const categoryLabel = formatScheduleCategoryLabel(game.kategorie);
+
+                return (
+                  <div key={game.id} className="min-w-0 p-3 sm:p-4 bg-white rounded-lg border border-stone-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <Badge variant="outline" className="border-[#d9dec8] text-[#4f5d2f] text-xs sm:text-sm">
+                        {game.feld}
+                      </Badge>
+                      <Badge variant="outline" className="max-w-full truncate text-xs border-stone-200 text-stone-700">
+                        <span className="hidden sm:inline truncate">{categoryLabel}</span>
+                        <span className="sm:hidden truncate">{categoryLabel.length > 10 ? `${categoryLabel.substring(0, 10)}...` : categoryLabel}</span>
+                      </Badge>
                     </div>
-                    <div className="text-xs sm:text-sm text-blue-700 mt-1">
-                      Spielzeit: {game.spielzeit} min {game.zweiHalbzeiten ? '(2 HZ)' : ''}
+                    <div className="text-center">
+                      <div className="break-words font-semibold text-stone-900 text-sm sm:text-base">
+                        {game.team1} vs {game.team2}
+                      </div>
+                      <div className="text-xs sm:text-sm text-stone-600 mt-1">
+                        Spielzeit: {game.spielzeit} min {game.zweiHalbzeiten ? '(2 HZ)' : ''}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

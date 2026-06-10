@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/database';
+import { getDatabase } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+import { notifySpielplanChanged } from '@/lib/spielplan-events';
 
 export async function POST(request: NextRequest) {
   // Verify authentication
@@ -31,18 +32,21 @@ export async function POST(request: NextRequest) {
     try {
       // Bereite die Statements vor
       const updateStmt = db.prepare(`
-        UPDATE spiele 
-        SET zeit = ?, display_order = ? 
+        UPDATE spiele
+        SET zeit = ?,
+            feld = COALESCE(?, feld),
+            datum = COALESCE(?, datum),
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `);
       
-      // Update die Reihenfolge und Zeiten für jedes Spiel
-      for (let i = 0; i < reorderedGames.length; i++) {
-        const spiel = reorderedGames[i];
-        updateStmt.run(spiel.zeit, i, spiel.id);
+      // Update Zeiten/Felder für jedes verschobene Spiel
+      for (const spiel of reorderedGames) {
+        updateStmt.run(spiel.zeit, spiel.feld || null, spiel.datum || day, spiel.id);
       }
       
       db.prepare('COMMIT').run();
+      notifySpielplanChanged({ reason: 'schedule-order' });
       
       return NextResponse.json({ 
         success: true, 

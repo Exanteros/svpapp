@@ -80,38 +80,38 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
   if (!isVisible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4">
+      <div className="bg-card text-card-foreground max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border shadow-xs">
         {!showSettings ? (
           // Haupt-Cookie-Banner
           <div className="p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                  <Info className="h-4 w-4 text-orange-600" />
+                <div className="flex size-8 items-center justify-center rounded-md bg-muted">
+                  <Info className="h-4 w-4 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">Cookie-Einstellungen</h3>
+                <h3 className="text-lg font-semibold text-foreground">Cookie-Einstellungen</h3>
               </div>
               <button
                 onClick={() => setIsVisible(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <div className="mb-6">
-              <p className="text-gray-600 mb-4">
+              <p className="text-muted-foreground mb-4">
                 Wir verwenden Cookies, um Ihnen die bestmögliche Nutzung unserer Turnier-Website zu ermöglichen. 
                 Einige Cookies sind technisch notwendig, andere helfen uns, die Website zu verbessern.
               </p>
-              <p className="text-sm text-gray-500 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 <strong>Keine Sorge:</strong> Wir verwenden keine Tracking- oder Werbe-Cookies. 
                 Ihre Privatsphäre ist uns wichtig.
               </p>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Was wir verwenden:</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <h4 className="font-medium text-foreground mb-2">Was wir verwenden:</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
                   <li>✓ <strong>Notwendige Cookies:</strong> Für Anmeldungen und Sicherheit</li>
                   <li>✓ <strong>Funktionale Cookies:</strong> Für bessere Bedienbarkeit (optional)</li>
                   <li>✗ <strong>Tracking-Cookies:</strong> Verwenden wir nicht</li>
@@ -123,21 +123,21 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 onClick={handleAcceptAll}
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                className="flex-1"
               >
                 Alle akzeptieren
               </Button>
               <Button
                 onClick={handleRejectOptional}
                 variant="outline"
-                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="flex-1"
               >
                 Nur notwendige
               </Button>
               <Button
                 onClick={handleShowSettings}
                 variant="outline"
-                className="flex items-center gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
                 Einstellungen
@@ -147,7 +147,7 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
             <div className="mt-4 text-center">
               <Link 
                 href="/cookie-richtlinie"
-                className="text-sm text-orange-600 hover:text-orange-700 underline"
+                className="text-sm text-primary underline-offset-4 hover:underline"
               >
                 Mehr Informationen in unserer Cookie-Richtlinie
               </Link>
@@ -157,10 +157,10 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
           // Detaillierte Einstellungen
           <div className="p-6">
             <div className="flex items-start justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Cookie-Einstellungen anpassen</h3>
+              <h3 className="text-lg font-semibold text-foreground">Cookie-Einstellungen anpassen</h3>
               <button
                 onClick={() => setShowSettings(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -168,20 +168,20 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
 
             <div className="space-y-6">
               {/* Notwendige Cookies */}
-              <div className="border border-gray-200 rounded-lg p-4">
+              <div className="rounded-lg border p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-900">Notwendige Cookies</h4>
-                  <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
+                  <h4 className="font-medium text-foreground">Notwendige Cookies</h4>
+                  <span className="rounded bg-secondary px-2 py-1 text-sm text-secondary-foreground">
                     Immer aktiv
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   Diese Cookies sind für das Funktionieren der Website erforderlich und können 
                   nicht deaktiviert werden. Sie ermöglichen grundlegende Funktionen wie 
                   Anmeldungen und Sicherheit.
                 </p>
-                <details className="text-sm text-gray-500">
-                  <summary className="cursor-pointer hover:text-gray-700">
+                <details className="text-sm text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground">
                     Details anzeigen
                   </summary>
                   <ul className="mt-2 space-y-1 ml-4">
@@ -193,9 +193,9 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
               </div>
 
               {/* Funktionale Cookies */}
-              <div className="border border-gray-200 rounded-lg p-4">
+              <div className="rounded-lg border p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-900">Funktionale Cookies</h4>
+                  <h4 className="font-medium text-foreground">Funktionale Cookies</h4>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -203,15 +203,15 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
                       onChange={(e) => setFunctionalCookies(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                    <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/20"></div>
                   </label>
                 </div>
-                <p className="text-sm text-gray-600 mb-3">
+                <p className="text-sm text-muted-foreground mb-3">
                   Diese Cookies verbessern die Benutzerfreundlichkeit, indem sie Ihre 
                   Einstellungen speichern und die Navigation erleichtern.
                 </p>
-                <details className="text-sm text-gray-500">
-                  <summary className="cursor-pointer hover:text-gray-700">
+                <details className="text-sm text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground">
                     Details anzeigen
                   </summary>
                   <ul className="mt-2 space-y-1 ml-4">
@@ -223,9 +223,9 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
               </div>
 
               {/* Datenschutz-Hinweis */}
-              <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400">
-                <h4 className="font-medium text-blue-900 mb-2">Ihr Datenschutz ist uns wichtig</h4>
-                <p className="text-sm text-blue-800">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <h4 className="font-medium text-foreground mb-2">Ihr Datenschutz ist uns wichtig</h4>
+                <p className="text-sm text-muted-foreground">
                   Wir verwenden keine Tracking-, Analyse- oder Werbe-Cookies. Alle Daten 
                   bleiben lokal und werden nicht an Dritte weitergegeben.
                 </p>
@@ -235,14 +235,14 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
             <div className="flex flex-col sm:flex-row gap-3 mt-6">
               <Button
                 onClick={handleSaveSettings}
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                className="flex-1"
               >
                 Einstellungen speichern
               </Button>
               <Button
                 onClick={() => setShowSettings(false)}
                 variant="outline"
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="border"
               >
                 Zurück
               </Button>

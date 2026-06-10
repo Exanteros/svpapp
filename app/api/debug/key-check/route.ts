@@ -18,31 +18,27 @@ export async function GET(request: NextRequest) {
     );
   }
   
-  // API Key extrahieren
   const apiKey = request.headers.get('x-api-key') || request.headers.get('authorization')?.replace('Bearer ', '');
-  const expectedKey = process.env.ADMIN_API_KEY || 'svp-admin-2025-secure-key';
-  
-  // Cookies prüfen
   const cookies = request.cookies;
   const apiKeyCookie = cookies.get('svp-admin-key');
+  const expectedKey = process.env.ADMIN_API_KEY;
   
-  // Antwort mit detaillierten Informationen
   return NextResponse.json({
     message: 'API-Schlüssel Debug-Informationen',
     expected: {
-      key: expectedKey,
-      length: expectedKey.length,
+      configured: Boolean(expectedKey),
+      length: expectedKey?.length || 0,
     },
     received: {
       fromHeader: apiKey ? {
-        key: apiKey,
+        key: maskSecret(apiKey),
         length: apiKey.length,
-        matches: apiKey === expectedKey
+        matches: expectedKey ? apiKey === expectedKey : false
       } : 'Nicht vorhanden',
       fromCookie: apiKeyCookie ? {
-        key: apiKeyCookie.value,
+        key: maskSecret(apiKeyCookie.value),
         length: apiKeyCookie.value.length,
-        matches: apiKeyCookie.value === expectedKey
+        matches: expectedKey ? apiKeyCookie.value === expectedKey : false
       } : 'Nicht vorhanden',
     },
     environment: {
@@ -65,27 +61,20 @@ export async function POST(request: NextRequest) {
   
   try {
     const { testKey } = await request.json();
-    const expectedKey = process.env.ADMIN_API_KEY || 'svp-admin-2025-secure-key';
+    const expectedKey = process.env.ADMIN_API_KEY;
     
     return NextResponse.json({
       message: 'API-Schlüssel Test',
       testKey: {
-        value: testKey,
+        value: typeof testKey === 'string' ? maskSecret(testKey) : null,
         length: testKey?.length || 0,
       },
       expectedKey: {
-        value: expectedKey,
-        length: expectedKey.length,
+        configured: Boolean(expectedKey),
+        length: expectedKey?.length || 0,
       },
       comparison: {
-        isExactMatch: testKey === expectedKey,
-        // Detaillierter Vergleich für die Fehlersuche
-        characterComparison: testKey ? Array.from(testKey).map((char, i) => ({
-          position: i,
-          testChar: char,
-          expectedChar: expectedKey[i] || null,
-          matches: char === expectedKey[i]
-        })) : [],
+        isExactMatch: Boolean(expectedKey) && testKey === expectedKey,
       }
     });
   } catch (error) {
@@ -94,4 +83,12 @@ export async function POST(request: NextRequest) {
       details: (error as Error).message
     }, { status: 400 });
   }
+}
+
+function maskSecret(value: string) {
+  if (value.length <= 8) {
+    return '********';
+  }
+
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }

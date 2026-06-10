@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+import { notifySpielplanChanged } from '@/lib/spielplan-events';
 
 export async function POST(request: NextRequest) {
   // Verify authentication
@@ -47,6 +48,8 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    notifySpielplanChanged({ reason: 'result', spielId: String(spielId), status: status || 'beendet' });
 
     // Hole das aktualisierte Spiel
     const updatedSpiel = db.prepare(`

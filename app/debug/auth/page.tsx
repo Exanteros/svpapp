@@ -49,23 +49,6 @@ export default function AuthDebugPage() {
     });
   }
   
-  // API-Key zurücksetzen
-  function resetApiKey() {
-    // Standard-API-Key
-    const apiKey = 'svp-admin-2025-secure-key';
-    
-    // In localStorage speichern
-    localStorage.setItem('svp-admin-key', apiKey);
-    
-    // In Cookie speichern (1 Tag gültig)
-    const expireDate = new Date();
-    expireDate.setDate(expireDate.getDate() + 1);
-    document.cookie = `svp-admin-key=${apiKey};expires=${expireDate.toUTCString()};path=/;SameSite=Lax`;
-    
-    // Status aktualisieren
-    checkAuthStatus();
-  }
-  
   // Alle Auth-Daten löschen
   function clearAllAuth() {
     localStorage.removeItem('svp-admin-key');
@@ -100,8 +83,7 @@ export default function AuthDebugPage() {
       const response = await fetch('/api/helfer', {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKeyStatus.value || 'svp-admin-2025-secure-key'
+          'Content-Type': 'application/json'
         }
       });
       
@@ -142,7 +124,7 @@ export default function AuthDebugPage() {
           </ul>
           
           <div className="space-x-2">
-            <Button onClick={resetApiKey} variant="secondary">API-Key zurücksetzen</Button>
+            <Button onClick={checkAuthStatus} variant="secondary">Status aktualisieren</Button>
             <Button onClick={clearAllAuth} variant="destructive">Alles löschen</Button>
           </div>
         </Card>

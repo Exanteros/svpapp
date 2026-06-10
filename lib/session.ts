@@ -2,9 +2,12 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 
+const DEV_ADMIN_EMAIL = 'admin@svpuschendorf.de';
+const VOLATILE_SESSION_SECRET = createVolatileSessionSecret();
+
 // Session configuration
 const SESSION_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'svp-session-secret-2025-fallback'
+  process.env.SESSION_SECRET || VOLATILE_SESSION_SECRET
 );
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
@@ -25,7 +28,7 @@ export async function encrypt(payload: SessionPayload): Promise<string> {
     role: payload.role,
     expiresAt: payload.expiresAt
   };
-  
+
   return new SignJWT(jwtPayload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -41,7 +44,7 @@ export async function decrypt(token: string): Promise<SessionPayload | null> {
     const { payload } = await jwtVerify(token, SESSION_SECRET, {
       algorithms: ['HS256'],
     });
-    
+
     return {
       userId: payload.userId as string,
       email: payload.email as string,
@@ -67,12 +70,12 @@ export async function createSession(email: string, userId = 'admin'): Promise<st
   };
 
   const encryptedSession = await encrypt(sessionPayload);
-  
+
   // Set session cookie
   const cookieStore = await cookies();
   cookieStore.set('session', encryptedSession, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureSessionCookie(),
     maxAge: SESSION_DURATION / 1000, // Convert to seconds
     path: '/',
     sameSite: 'lax',
@@ -99,7 +102,7 @@ export async function getSession(request?: NextRequest): Promise<SessionPayload 
   if (!token) return null;
 
   const session = await decrypt(token);
-  
+
   // Check if session is expired
   if (session && Date.now() > session.expiresAt) {
     await deleteSession();
@@ -132,11 +135,11 @@ export async function refreshSession(): Promise<void> {
   };
 
   const encryptedSession = await encrypt(newSessionPayload);
-  
+
   const cookieStore = await cookies();
   cookieStore.set('session', encryptedSession, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureSessionCookie(),
     maxAge: SESSION_DURATION / 1000,
     path: '/',
     sameSite: 'lax',
@@ -147,9 +150,46 @@ export async function refreshSession(): Promise<void> {
  * Verify admin credentials (simple username/password check)
  */
 export function verifyCredentials(email: string, password: string): boolean {
-  // Default admin credentials - in production, hash the password!
-  const defaultEmail = process.env.ADMIN_EMAIL || 'admin@svpuschendorf.de';
-  const defaultPassword = process.env.ADMIN_PASSWORD || 'svp2025!';
-  
-  return email === defaultEmail && password === defaultPassword;
+  const configuredEmail = process.env.ADMIN_EMAIL;
+  const configuredPassword = process.env.ADMIN_PASSWORD;
+
+  if (!configuredEmail || !configuredPassword) {
+    if (process.env.NODE_ENV === 'development') {
+      const devPassword = process.env.DEV_ADMIN_PASSWORD;
+      return Boolean(devPassword) && email === DEV_ADMIN_EMAIL && password === devPassword;
+    }
+
+    return false;
+  }
+
+  return email === configuredEmail && password === configuredPassword;
+}
+
+function createVolatileSessionSecret() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  const values = new Uint32Array(4);
+
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(values);
+    return Array.from(values, (value) => value.toString(36)).join('');
+  }
+
+  return `volatile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function shouldUseSecureSessionCookie() {
+  const explicitValue = process.env.SESSION_COOKIE_SECURE;
+
+  if (explicitValue === 'true') {
+    return true;
+  }
+
+  if (explicitValue === 'false') {
+    return false;
+  }
+
+  return process.env.NODE_ENV === 'production';
 }

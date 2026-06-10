@@ -1,10 +1,11 @@
 'use client';
 
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import CookieBanner from "@/components/CookieBanner";
+import { TypographyH1 } from "@/components/ui/typography";
 import { useCookieConsent } from "@/hooks/use-cookie-consent";
 
 export default function CookieRichtliniePage() {
@@ -15,58 +16,34 @@ export default function CookieRichtliniePage() {
     setShowCookieBanner(true);
   };
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              {/* Handball Ball Icon */}
-              <div className="relative w-8 h-8">
-                <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
-                <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
-              </div>
-              <h1 className="text-xl font-bold text-gray-900">SV Puschendorf</h1>
-            </div>
-            
-            <Link href="/">
-              <Button variant="outline" className="flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Zurück zur Hauptseite
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <div className="bg-background">
       {/* Main Content */}
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-8">Cookie-Richtlinie</h1>
+      <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+        <div className="max-w-4xl">
+          <TypographyH1 className="mb-8">Cookie-Richtlinie</TypographyH1>
           
           <div className="prose prose-lg max-w-none">
             {/* Einleitung */}
             <section className="mb-8">
-              <div className="bg-blue-50 p-6 rounded-lg border-l-4 border-blue-400">
+              <div className="bg-muted/40 p-6 rounded-lg border">
                 <p className="mb-4">
                   Diese Cookie-Richtlinie erklärt, wie die Handball-Turnier-Website des SV Puschendorf 
-                  Cookies und ähnliche Technologien verwendet. Die technische Plattform wird von der 
-                  Contimore UG bereitgestellt.
+                  Cookies, Local Storage und ähnliche Technologien verwendet.
                 </p>
                 <p className="mb-4">
                   <strong>Unser Versprechen:</strong> Wir verwenden nur die minimal notwendigen Cookies 
                   für das Funktionieren der Turnier-Website. Keine Tracking-, Werbe- oder Analyse-Cookies!
                 </p>
                 <p>
-                  <strong>Stand:</strong> August 2025
+                  <strong>Stand:</strong> Juni 2026
                 </p>
               </div>
             </section>
 
             {/* Was sind Cookies */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Was sind Cookies?</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Was sind Cookies?</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   Cookies sind kleine Textdateien, die auf Ihrem Gerät (Computer, Tablet oder 
                   Smartphone) gespeichert werden, wenn Sie eine Website besuchen. Sie helfen 
@@ -82,31 +59,30 @@ export default function CookieRichtliniePage() {
 
             {/* Welche Cookies verwenden wir */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Welche Cookies verwenden wir?</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-3">1. Unbedingt erforderliche Cookies</h3>
+              <h2 className="mb-4">Welche Cookies verwenden wir?</h2>
+              <div className="rounded-lg border bg-card p-6">
+                <h3 className="mb-3">1. Unbedingt erforderliche Cookies</h3>
                 <p className="mb-4">
                   Diese Cookies sind für das Funktionieren der Turnier-Website absolut notwendig und 
                   können nicht deaktiviert werden:
                 </p>
                 <ul className="list-disc list-inside space-y-2 mb-6">
-                  <li><strong>svp_session:</strong> Für Team-Anmeldungen und Verwaltung</li>
-                  <li><strong>csrf_token:</strong> Schutz vor Cross-Site-Request-Forgery (CSRF) Angriffen</li>
-                  <li><strong>svp_cookie_consent:</strong> Speichert Ihre Cookie-Präferenzen</li>
+                  <li><strong>session / admin-session:</strong> Admin-Login und Zugriffsschutz</li>
+                  <li><strong>svp_cookie_consent:</strong> Speichert Ihre Cookie-Präferenzen im Local Storage</li>
+                  <li><strong>Service Worker Cache:</strong> PWA-Funktion und schnelles Laden öffentlicher Seiten</li>
                 </ul>
 
-                <h3 className="text-lg font-semibold mb-3">2. Funktionale Cookies (Optional)</h3>
+                <h3 className="mb-3">2. Funktionale Cookies (Optional)</h3>
                 <p className="mb-4">
                   Diese Cookies verbessern die Benutzererfahrung unserer Turnier-Website:
                 </p>
                 <ul className="list-disc list-inside space-y-2 mb-6">
                   <li><strong>svp_turnier_cache:</strong> Zwischenspeicherung von Turnierdaten für bessere Performance</li>
-                  <li><strong>svp_form_data:</strong> Verhindert Datenverlust beim Ausfüllen von Anmeldeformularen</li>
                   <li><strong>svp_ui_preferences:</strong> Speichert Ihre Designeinstellungen (hell/dunkel)</li>
                   <li><strong>svp_user_settings:</strong> Persönliche Einstellungen wie bevorzugte Sprache</li>
                 </ul>
 
-                <h3 className="text-lg font-semibold mb-3">3. Was wir NICHT verwenden</h3>
+                <h3 className="mb-3">3. Was wir NICHT verwenden</h3>
                 <p className="mb-4">
                   <strong>Garantie:</strong> Wir verwenden bewusst <u>keine</u> Cookies für:
                 </p>
@@ -123,8 +99,8 @@ export default function CookieRichtliniePage() {
 
             {/* Cookie-Details */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Detaillierte Cookie-Information</h2>
-              <div className="bg-gray-50 p-6 rounded-lg overflow-x-auto">
+              <h2 className="mb-4">Detaillierte Cookie-Information</h2>
+              <div className="rounded-lg border bg-card p-6 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-300">
@@ -136,21 +112,21 @@ export default function CookieRichtliniePage() {
                   </thead>
                   <tbody>
                     <tr className="border-b border-gray-200">
-                      <td className="py-2 px-3">svp_session</td>
-                      <td className="py-2 px-3">Team-Anmeldung und Session-Verwaltung</td>
-                      <td className="py-2 px-3">Browser-Session</td>
-                      <td className="py-2 px-3">Erforderlich</td>
-                    </tr>
-                    <tr className="border-b border-gray-200">
-                      <td className="py-2 px-3">csrf_token</td>
-                      <td className="py-2 px-3">Sicherheit gegen CSRF-Angriffe</td>
-                      <td className="py-2 px-3">Browser-Session</td>
+                      <td className="py-2 px-3">session / admin-session</td>
+                      <td className="py-2 px-3">Admin-Login und Zugriffsschutz</td>
+                      <td className="py-2 px-3">Session bzw. begrenzte Laufzeit</td>
                       <td className="py-2 px-3">Erforderlich</td>
                     </tr>
                     <tr className="border-b border-gray-200">
                       <td className="py-2 px-3">svp_cookie_consent</td>
-                      <td className="py-2 px-3">Speichert Cookie-Einwilligung</td>
-                      <td className="py-2 px-3">1 Jahr</td>
+                      <td className="py-2 px-3">Speichert Cookie-Einstellungen</td>
+                      <td className="py-2 px-3">bis zur Änderung/Löschung</td>
+                      <td className="py-2 px-3">Erforderlich</td>
+                    </tr>
+                    <tr className="border-b border-gray-200">
+                      <td className="py-2 px-3">PWA Cache Storage</td>
+                      <td className="py-2 px-3">Offline-/PWA-Funktion und schnelles Laden öffentlicher Assets</td>
+                      <td className="py-2 px-3">bis Cache-Aktualisierung oder Browser-Löschung</td>
                       <td className="py-2 px-3">Erforderlich</td>
                     </tr>
                     <tr className="border-b border-gray-200">
@@ -160,9 +136,9 @@ export default function CookieRichtliniePage() {
                       <td className="py-2 px-3">Funktional</td>
                     </tr>
                     <tr className="border-b border-gray-200">
-                      <td className="py-2 px-3">svp_form_data</td>
-                      <td className="py-2 px-3">Anmeldeformular-Zwischenspeicherung</td>
-                      <td className="py-2 px-3">1 Tag</td>
+                      <td className="py-2 px-3">svp-admin-key / svp-session-token</td>
+                      <td className="py-2 px-3">Admin-Zugriff im lokalen Browserkontext</td>
+                      <td className="py-2 px-3">bis Logout oder Ablauf</td>
                       <td className="py-2 px-3">Funktional</td>
                     </tr>
                     <tr className="border-b border-gray-200">
@@ -184,29 +160,29 @@ export default function CookieRichtliniePage() {
 
             {/* Cookie-Einstellungen verwalten */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Cookie-Einstellungen verwalten</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold mb-3">Auf unserer Turnier-Website</h3>
+              <h2 className="mb-4">Cookie-Einstellungen verwalten</h2>
+              <div className="rounded-lg border bg-card p-6">
+                <h3 className="mb-3">Auf unserer Turnier-Website</h3>
                 <p className="mb-4">
                   Sie können Ihre Cookie-Einstellungen jederzeit über den Button unten anpassen:
                 </p>
 
-                <div className="bg-white p-4 rounded border border-gray-200">
+                <div className="rounded border bg-card p-4">
                   <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                     <Button 
                       onClick={handleOpenCookieSettings}
-                      className="bg-orange-600 hover:bg-orange-700 text-white flex items-center gap-2"
+                      className="flex items-center gap-2"
                     >
                       <Settings className="h-4 w-4" />
                       Cookie-Einstellungen öffnen
                     </Button>
                     
                     {consent && (
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-muted-foreground">
                         <p><strong>Aktuelle Einstellungen:</strong></p>
                         <p>Notwendige Cookies: ✅ Aktiviert</p>
                         <p>Funktionale Cookies: {functionalAllowed ? '✅ Aktiviert' : '❌ Deaktiviert'}</p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           Letzte Änderung: {new Date(consent.timestamp).toLocaleDateString('de-DE')}
                         </p>
                       </div>
@@ -237,8 +213,8 @@ export default function CookieRichtliniePage() {
 
             {/* Rechtsgrundlage */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Rechtsgrundlage</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Rechtsgrundlage</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   <strong>Erforderliche Cookies:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse) 
                   - notwendig für das Funktionieren der Website.
@@ -256,11 +232,11 @@ export default function CookieRichtliniePage() {
 
             {/* Kontakt */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Datenschutz und weitere Informationen</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Datenschutz und weitere Informationen</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   Weitere Informationen zur Datenverarbeitung finden Sie in unserer 
-                  <Link href="/datenschutz" className="text-orange-600 hover:text-orange-700 mx-1">
+                  <Link href="/datenschutz" className="text-primary hover:text-foreground mx-1">
                     Datenschutzerklärung
                   </Link>.
                 </p>
@@ -268,18 +244,10 @@ export default function CookieRichtliniePage() {
                   Bei Fragen zu Cookies und Datenschutz können Sie sich gerne an uns wenden:
                 </p>
                 <p className="mb-2">
-                  <strong>Contimore UG (haftungsbeschränkt)</strong><br />
-                  E-Mail: 
-                  <a 
-                    href="#" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const email = 'hi' + '@' + 'contimore.de';
-                      window.location.href = 'mailto:' + email;
-                    }}
-                    className="text-orange-600 hover:text-orange-700 ml-1"
-                  >
-                    hi [at] contimore [dot] de
+                  <strong>Cedric Geißdörfer</strong><br />
+                  E-Mail:{" "}
+                  <a href="mailto:support@pudo-dartmasters.de" className="text-primary hover:text-foreground">
+                    support@pudo-dartmasters.de
                   </a>
                 </p>
               </div>
@@ -287,44 +255,21 @@ export default function CookieRichtliniePage() {
 
             {/* Kontakt */}
             <section className="mb-8">
-              <div className="bg-orange-50 p-6 rounded-lg border-l-4 border-orange-400">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Fragen zu Cookies?</h3>
+              <div className="bg-muted/40 p-6 rounded-lg border">
+                <h3 className="mb-4">Fragen zu Cookies?</h3>
                 <p className="mb-4">
                   Bei Fragen zu unserer Cookie-Verwendung oder Datenschutz wenden Sie sich gerne an uns:
                 </p>
                 <div className="space-y-2">
                   <p className="text-sm">
-                    <strong>Technische Fragen (Contimore UG):</strong><br />
-                    E-Mail: 
-                    <a 
-                      href="#" 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const email = 'hi' + '@' + 'contimore.de';
-                        window.location.href = 'mailto:' + email;
-                      }}
-                      className="text-orange-600 hover:text-orange-700 ml-1"
-                    >
-                      hi [at] contimore [dot] de
-                    </a>
-                  </p>
-                  <p className="text-sm">
-                    <strong>Turnier-Fragen (SV Puschendorf):</strong><br />
-                    E-Mail: 
-                    <a 
-                      href="#" 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const email = 'die.goetzelmaenner' + '@' + 'gmail.com';
-                        window.location.href = 'mailto:' + email;
-                      }}
-                      className="text-orange-600 hover:text-orange-700 ml-1"
-                    >
-                      die.goetzelmaenner [at] gmail [dot] com
+                    <strong>Kontakt:</strong><br />
+                    E-Mail:{" "}
+                    <a href="mailto:support@pudo-dartmasters.de" className="text-primary hover:text-foreground">
+                      support@pudo-dartmasters.de
                     </a>
                   </p>
                 </div>
-                <p className="text-sm text-gray-600 mt-4">
+                <p className="text-sm text-muted-foreground mt-4">
                   <strong>Unser Versprechen:</strong> Wir verwenden Cookies nur für das Nötigste 
                   und respektieren Ihre Privatsphäre. Keine versteckten Tracker oder Werbecookies!
                 </p>
@@ -333,24 +278,6 @@ export default function CookieRichtliniePage() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white mt-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="relative w-6 h-6">
-                <div className="w-6 h-6 bg-orange-500 rounded-full"></div>
-                <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full opacity-30"></div>
-              </div>
-              <span className="font-semibold text-sm">SV Puschendorf</span>
-            </div>
-            <p className="text-gray-400 text-xs text-center sm:text-left">
-              © 2025 Contimore UG (haftungsbeschränkt) & Sportverein Puschendorf 1949 e.V.
-            </p>
-          </div>
-        </div>
-      </footer>
 
       {/* Cookie Banner für Einstellungen */}
       {showCookieBanner && (

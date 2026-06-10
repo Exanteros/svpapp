@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { startRegistration } from '@simplewebauthn/browser';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -168,48 +169,16 @@ export default function PasskeyManager({ onSuccess, onError }: PasskeyManagerPro
 
       const options = await optionsResponse.json();
       
-      // 2. Convert base64url strings to ArrayBuffer
-      const credentialCreationOptions: CredentialCreationOptions = {
-        publicKey: {
-          ...options,
-          challenge: new TextEncoder().encode(options.challenge),
-          user: {
-            ...options.user,
-            id: new TextEncoder().encode(options.user.id)
-          },
-          excludeCredentials: options.excludeCredentials?.map((cred: any) => ({
-            ...cred,
-            id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-          }))
-        }
-      };
+      // 2. Create credential using WebAuthn API
+      const credential = await startRegistration({ optionsJSON: options });
 
-      // 3. Create credential using WebAuthn API
-      const credential = await navigator.credentials.create(credentialCreationOptions) as PublicKeyCredential;
-      
-      if (!credential) {
-        throw new Error('Passkey-Erstellung wurde abgebrochen');
-      }
-
-      // 4. Send credential to server for verification
+      // 3. Send credential to server for verification
       const registrationResponse = await fetch('/api/auth/passkey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'register',
-          credential: {
-            id: credential.id,
-            rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
-            response: {
-              attestationObject: btoa(String.fromCharCode(...new Uint8Array(
-                (credential.response as AuthenticatorAttestationResponse).attestationObject
-              ))),
-              clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(
-                credential.response.clientDataJSON
-              )))
-            },
-            type: credential.type
-          },
+          credential,
           challenge: options.challenge
         })
       });

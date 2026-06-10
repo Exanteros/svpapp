@@ -1,67 +1,45 @@
 'use client';
 
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { TypographyH1 } from "@/components/ui/typography";
 
 export default function WiderrufsrechtPage() {
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              {/* Handball Ball Icon */}
-              <div className="relative w-8 h-8">
-                <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
-                <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
-              </div>
-              <h1 className="text-xl font-bold text-gray-900">SV Puschendorf</h1>
-            </div>
-            
-            <Link href="/">
-              <Button variant="outline" className="flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Zurück zur Hauptseite
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <div className="bg-background">
       {/* Main Content */}
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-8">Widerrufsrecht</h1>
+      <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+        <div className="max-w-4xl">
+          <TypographyH1 className="mb-8">Widerrufsrecht</TypographyH1>
           
           <div className="prose prose-lg max-w-none">
             {/* Einleitung */}
             <section className="mb-8">
-              <div className="bg-blue-50 p-6 rounded-lg border-l-4 border-blue-400">
+              <div className="bg-muted/40 p-6 rounded-lg border">
                 <p className="mb-4">
-                  <strong>Wichtiger Hinweis:</strong> Die Contimore UG stellt lediglich die technische 
-                  Plattform für die Turnieranmeldung bereit. Der Teilnahmevertrag kommt direkt zwischen 
-                  Ihrem Team und dem SV Puschendorf 1949 e.V. zustande.
+                  <strong>Wichtiger Hinweis:</strong> Diese Website ermöglicht die Anmeldung zum 
+                  Handball-Turnier. Der Teilnahmevertrag kommt direkt zwischen Ihrem Team und dem 
+                  SV Puschendorf 1949 e.V. zustande.
                 </p>
                 <p className="mb-4">
                   Da es sich um eine Sportveranstaltung mit festem Termin handelt und der SV Puschendorf 
                   als gemeinnütziger Verein agiert, gelten besondere Bedingungen für das Widerrufsrecht.
                 </p>
                 <p>
-                  <strong>Stand:</strong> August 2025
+                  <strong>Stand:</strong> Juni 2026
                 </p>
               </div>
             </section>
 
             {/* Widerrufsrecht */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Anwendbarkeit des Widerrufsrechts</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Anwendbarkeit des Widerrufsrechts</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
-                  <strong>Plattformanbieter:</strong> Die Contimore UG stellt ausschließlich die technische 
-                  Plattform für Anmeldungen bereit. Es besteht kein direktes Vertragsverhältnis zwischen 
-                  der Contimore UG und den anmeldenden Teams bezüglich der Turnierteilnahme.
+                  <strong>Website-Kontakt:</strong> Cedric Geißdörfer, Asternstraße 17, 
+                  90617 Puschendorf, E-Mail:{" "}
+                  <a href="mailto:support@pudo-dartmasters.de" className="text-primary hover:text-foreground">
+                    support@pudo-dartmasters.de
+                  </a>
                 </p>
                 <p className="mb-4">
                   <strong>Vertragspartner:</strong> Der Teilnahmevertrag kommt zwischen Ihrem Team und dem 
@@ -75,15 +53,15 @@ export default function WiderrufsrechtPage() {
                 <p className="mb-4">
                   <strong>Empfehlung:</strong> Für rechtliche Fragen zum Widerrufsrecht wenden Sie sich 
                   direkt an den SV Puschendorf 1949 e.V. Die praktischen Stornierungsmöglichkeiten 
-                  finden Sie in unseren <Link href="/agb" className="text-orange-600 hover:text-orange-700">AGB</Link>.
+                  finden Sie in unseren <Link href="/agb" className="text-primary hover:text-foreground">AGB</Link>.
                 </p>
               </div>
             </section>
 
             {/* Stornierungsmöglichkeiten */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Praktische Stornierungsmöglichkeiten</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Praktische Stornierungsmöglichkeiten</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   Unabhängig von formellen Widerrufsrechten bietet der SV Puschendorf 1949 e.V. 
                   faire Stornierungsmöglichkeiten:
@@ -102,8 +80,8 @@ export default function WiderrufsrechtPage() {
 
             {/* Kontakt für Stornierungen */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Kontakt für Stornierungen</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Kontakt für Stornierungen</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   <strong>Für Stornierungen wenden Sie sich bitte direkt an:</strong>
                 </p>
@@ -111,36 +89,8 @@ export default function WiderrufsrechtPage() {
                   <p className="mb-2"><strong>SV Puschendorf 1949 e.V. - Handballabteilung</strong></p>
                   <p className="mb-4">
                     E-Mail: 
-                    <a 
-                      href="#" 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const email = 'die.goetzelmaenner' + '@' + 'gmail.com';
-                        window.location.href = 'mailto:' + email;
-                      }}
-                      className="text-orange-600 hover:text-orange-700 ml-1"
-                    >
-                      die.goetzelmaenner [at] gmail [dot] com
-                    </a>
-                  </p>
-                </div>
-                <p className="mb-4">
-                  <strong>Für technische Fragen zur Plattform:</strong>
-                </p>
-                <div className="mb-4">
-                  <p className="mb-2"><strong>Contimore UG (haftungsbeschränkt)</strong></p>
-                  <p className="mb-4">
-                    E-Mail: 
-                    <a 
-                      href="#" 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const email = 'hi' + '@' + 'contimore.de';
-                        window.location.href = 'mailto:' + email;
-                      }}
-                      className="text-orange-600 hover:text-orange-700 ml-1"
-                    >
-                      hi [at] contimore [dot] de
+                    <a href="mailto:support@pudo-dartmasters.de" className="text-primary hover:text-foreground ml-1">
+                      support@pudo-dartmasters.de
                     </a>
                   </p>
                 </div>
@@ -149,13 +99,13 @@ export default function WiderrufsrechtPage() {
 
             {/* Rechtliche Einordnung */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Rechtliche Einordnung</h2>
+              <h2 className="mb-4">Rechtliche Einordnung</h2>
               <div className="bg-amber-50 p-6 rounded-lg border-l-4 border-amber-400">
                 <p className="mb-4">
                   <strong>Warum kein klassisches Widerrufsrecht?</strong>
                 </p>
                 <ul className="list-disc list-inside space-y-2 mb-4">
-                  <li>Die Contimore UG ist nur technischer Dienstleister, nicht Vertragspartner für die Turnierteilnahme</li>
+                  <li>Der Teilnahmevertrag wird mit dem Veranstalter des Turniers geschlossen</li>
                   <li>Der SV Puschendorf 1949 e.V. ist ein gemeinnütziger Verein, kein gewerblicher Anbieter</li>
                   <li>Sportveranstaltungen mit festem Termin unterliegen besonderen Regelungen</li>
                   <li>Es handelt sich um ein Freizeitturnier ohne kommerzielle Gewinnabsicht</li>
@@ -169,8 +119,8 @@ export default function WiderrufsrechtPage() {
 
             {/* Praktische Hinweise */}
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Praktische Hinweise</h2>
-              <div className="bg-gray-50 p-6 rounded-lg">
+              <h2 className="mb-4">Praktische Hinweise</h2>
+              <div className="rounded-lg border bg-card p-6">
                 <p className="mb-4">
                   <strong>Einfache Stornierung:</strong> Für eine Stornierung genügt eine einfache 
                   E-Mail an die Handballabteilung des SV Puschendorf. Keine komplizierten Formulare nötig.
@@ -192,42 +142,19 @@ export default function WiderrufsrechtPage() {
 
             {/* Kontakt */}
             <section className="mb-8">
-              <div className="bg-orange-50 p-6 rounded-lg border-l-4 border-orange-400">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Fragen zu Stornierungen?</h3>
+              <div className="bg-muted/40 p-6 rounded-lg border">
+                <h3 className="mb-4">Fragen zu Stornierungen?</h3>
                 <p className="mb-4">
                   Bei Fragen zu Stornierungen oder zur Anmeldung wenden Sie sich gerne an:
                 </p>
                 <p className="mb-2">
                   <strong>Turnier-Organisation:</strong><br />
                   E-Mail: 
-                  <a 
-                    href="#" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const email = 'die.goetzelmaenner' + '@' + 'gmail.com';
-                      window.location.href = 'mailto:' + email;
-                    }}
-                    className="text-orange-600 hover:text-orange-700 ml-1"
-                  >
-                    die.goetzelmaenner [at] gmail [dot] com
+                  <a href="mailto:support@pudo-dartmasters.de" className="text-primary hover:text-foreground ml-1">
+                    support@pudo-dartmasters.de
                   </a>
                 </p>
-                <p className="mb-2">
-                  <strong>Technische Fragen:</strong><br />
-                  E-Mail: 
-                  <a 
-                    href="#" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const email = 'hi' + '@' + 'contimore.de';
-                      window.location.href = 'mailto:' + email;
-                    }}
-                    className="text-orange-600 hover:text-orange-700 ml-1"
-                  >
-                    hi [at] contimore [dot] de
-                  </a>
-                </p>
-                <p className="text-sm text-gray-600 mt-4">
+                <p className="text-sm text-muted-foreground mt-4">
                   <strong>Hinweis:</strong> Stornierungen werden in der Regel innerhalb von 2 Werktagen bearbeitet.
                 </p>
               </div>
@@ -235,24 +162,6 @@ export default function WiderrufsrechtPage() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white mt-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="relative w-6 h-6">
-                <div className="w-6 h-6 bg-orange-500 rounded-full"></div>
-                <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full opacity-30"></div>
-              </div>
-              <span className="font-semibold text-sm">SV Puschendorf</span>
-            </div>
-            <p className="text-gray-400 text-xs text-center sm:text-left">
-              © 2025 Contimore UG (haftungsbeschränkt) & Sportverein Puschendorf 1949 e.V.
-            </p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -54,9 +54,6 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy database if it exists (optional)
-COPY --from=builder --chown=nextjs:nodejs /app/database.sqlite* ./
-
 # Create directories for dynamic content
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 RUN mkdir -p /app/sessions && chown nextjs:nodejs /app/sessions

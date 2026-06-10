@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SV Puschendorf">
+  <rect width="512" height="512" rx="80" fill="#5e6d35"/>
+  <rect x="70" y="70" width="372" height="372" rx="56" fill="#f6f7f1"/>
+  <rect x="94" y="94" width="324" height="324" rx="42" fill="#ffffff"/>
+  <path fill="#35401f" d="M154 170h94v34h-58v34h51c33 0 56 21 56 53 0 34-26 55-62 55h-87v-36h82c15 0 24-6 24-18 0-11-8-17-23-17h-51c-32 0-54-21-54-52 0-33 24-53 61-53Zm151 0h44l42 116 42-116h43l-67 176h-38Z"/>
+  <rect x="154" y="368" width="246" height="14" rx="7" fill="#5e6d35"/>
+</svg>

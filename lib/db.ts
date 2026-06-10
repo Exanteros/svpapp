@@ -1,52 +1,138 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
+import fs from 'fs';
 import path from 'path';
+import {
+  DEFAULT_FELD_EINSTELLUNGEN,
+  TOURNAMENT_DEFAULTS,
+  calculateRegistrationCost,
+  normalizeFeldEinstellungen,
+  type FeldEinstellungen,
+} from './tournament';
 
 let db: Database.Database | null = null;
 
-// Funktion zur Ausführung von Datenbank-Migrationen
-function runMigrations(database: Database.Database) {
-  console.log('Führe Datenbank-Migrationen aus...');
-  
-  // Migration: Stelle sicher, dass helfer_bedarf eine updated_at Spalte hat
-  try {
-    const columns = database.prepare(`PRAGMA table_info(helfer_bedarf)`).all() as any[];
-    const hasUpdatedAt = columns.some(column => column.name === 'updated_at');
-    
-    if (!hasUpdatedAt) {
-      console.log('Migration: Füge updated_at Spalte zur helfer_bedarf-Tabelle hinzu...');
-      database.exec(`ALTER TABLE helfer_bedarf ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP`);
-      console.log('Migration: updated_at Spalte erfolgreich hinzugefügt');
-    } else {
-      console.log('Migration: updated_at Spalte existiert bereits');
-    }
-  } catch (error) {
-    // Falls die Tabelle noch nicht existiert, ist das kein Fehler (wird später erstellt)
-    console.log('Migration: Konnte updated_at nicht prüfen - möglicherweise existiert die Tabelle noch nicht');
+type TableColumn = {
+  name: string;
+};
+
+export type SpielplanStatus = 'draft' | 'published';
+
+export type StoredLiveTimer = {
+  liveTime: string;
+  status: string;
+  startTime?: number;
+  elapsedTime: number;
+  isSecondHalf: boolean;
+  halbzeitStartTime?: number;
+  lastUpdate: number;
+};
+
+export type RegistrationImportMode = 'teams_payments' | 'payments_only';
+
+export type RegistrationImportTeam = {
+  kategorie: string;
+  anzahl: number;
+  schiri: boolean;
+  spielstaerke?: string;
+};
+
+export type RegistrationImportEntry = {
+  id?: string;
+  verein: string;
+  kontakt?: string;
+  email?: string;
+  mobil?: string;
+  kosten?: number;
+  status?: 'angemeldet' | 'bezahlt' | 'storniert';
+  teams: RegistrationImportTeam[];
+  sourceRows: number[];
+};
+
+export type RegistrationImportWarning = {
+  row?: number;
+  message: string;
+};
+
+export type RegistrationImportResult = {
+  rows: number;
+  entries: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  paymentsUpdated: number;
+  teamsInserted: number;
+  teamsReplaced: number;
+  warnings: RegistrationImportWarning[];
+};
+
+function createId(prefix: string) {
+  return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`;
+}
+
+function tableHasColumn(database: Database.Database, tableName: string, columnName: string) {
+  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as TableColumn[];
+  return columns.some((column) => column.name === columnName);
+}
+
+function addColumnIfMissing(
+  database: Database.Database,
+  tableName: string,
+  columnName: string,
+  columnDefinition: string
+) {
+  if (!tableHasColumn(database, tableName, columnName)) {
+    database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
   }
-  
-  console.log('Datenbank-Migrationen abgeschlossen');
 }
 
 // Datenbank-Verbindung herstellen
 export function getDatabase() {
   if (!db) {
-    db = new Database(path.join(process.cwd(), 'database.sqlite'));
-    
+    const databasePath = resolveDatabasePath();
+    fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+    db = new Database(databasePath, {
+      fileMustExist: false,
+      timeout: Number.parseInt(process.env.DB_TIMEOUT || '5000', 10),
+    });
+
     // WAL-Modus für bessere Concurrency
     db.pragma('journal_mode = WAL');
-    
+    db.pragma('synchronous = NORMAL');
+    db.pragma('cache_size = -2000');
+    db.pragma('temp_store = memory');
+    db.pragma('mmap_size = 67108864');
+    db.pragma(`busy_timeout = ${Number.parseInt(process.env.DB_BUSY_TIMEOUT || '5000', 10)}`);
+
     // Tabellen erstellen
     initializeTables();
-    
+
     // Datenbankmigrationen ausführen
     migrateDatabase();
   }
   return db;
 }
 
+function resolveDatabasePath() {
+  const configuredPath = process.env.DATABASE_PATH;
+
+  if (configuredPath) {
+    return path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.join(process.cwd(), configuredPath);
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return path.join(process.cwd(), 'data', 'database.sqlite');
+  }
+
+  return path.join(process.cwd(), 'database.sqlite');
+}
+
 function initializeTables() {
   if (!db) return;
-  
+
   // Anmeldungen Tabelle
   db.exec(`
     CREATE TABLE IF NOT EXISTS anmeldungen (
@@ -61,7 +147,7 @@ function initializeTables() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
+
   // Teams Tabelle
   db.exec(`
     CREATE TABLE IF NOT EXISTS teams (
@@ -75,7 +161,7 @@ function initializeTables() {
       FOREIGN KEY (anmeldung_id) REFERENCES anmeldungen (id)
     )
   `);
-  
+
   // Spiele Tabelle
   db.exec(`
     CREATE TABLE IF NOT EXISTS spiele (
@@ -94,7 +180,22 @@ function initializeTables() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS spiel_live_timers (
+      spiel_id TEXT PRIMARY KEY,
+      live_time TEXT,
+      status TEXT NOT NULL,
+      start_time INTEGER,
+      elapsed_time INTEGER DEFAULT 0,
+      is_second_half INTEGER DEFAULT 0,
+      halbzeit_start_time INTEGER,
+      last_update INTEGER NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (spiel_id) REFERENCES spiele (id) ON DELETE CASCADE
+    )
+  `);
+
   // Turnier-Einstellungen Tabelle
   db.exec(`
     CREATE TABLE IF NOT EXISTS einstellungen (
@@ -104,19 +205,41 @@ function initializeTables() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
+
   // Standard-Einstellungen einfügen
   const insertEinstellung = db.prepare(`
     INSERT OR IGNORE INTO einstellungen (id, key, value) VALUES (?, ?, ?)
   `);
-  
-  insertEinstellung.run('1', 'turnier_name', 'Rasenturnier Puschendorf 2025');
-  insertEinstellung.run('2', 'startgeld', '25');
-  insertEinstellung.run('3', 'schiri_geld', '20');
+
+  insertEinstellung.run('1', 'turnier_name', TOURNAMENT_DEFAULTS.name);
+  insertEinstellung.run('2', 'startgeld', TOURNAMENT_DEFAULTS.teamFee.toString());
+  insertEinstellung.run('3', 'schiri_geld', TOURNAMENT_DEFAULTS.missingRefereeFee.toString());
   insertEinstellung.run('4', 'anzahl_felder', '4');
-  insertEinstellung.run('5', 'anmeldeschluss', '2025-06-30');
-  insertEinstellung.run('6', 'turnier_datum_1', '2025-07-05');
-  insertEinstellung.run('7', 'turnier_datum_2', '2025-07-06');
+  insertEinstellung.run('5', 'anmeldeschluss', TOURNAMENT_DEFAULTS.registrationDeadline);
+  insertEinstellung.run('6', 'turnier_datum_1', TOURNAMENT_DEFAULTS.startDate);
+  insertEinstellung.run('7', 'turnier_datum_2', TOURNAMENT_DEFAULTS.endDate);
+  insertEinstellung.run('20', 'spielplan_status', 'draft');
+  insertEinstellung.run('21', 'spielplan_published_at', '');
+  insertEinstellung.run('24', 'anmeldung_aktiv', 'true');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_settings (
+      key TEXT PRIMARY KEY,
+      einstellungen TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS feld_jahrgang_zuordnungen (
+      id TEXT PRIMARY KEY,
+      feld_id TEXT NOT NULL,
+      datum TEXT NOT NULL,
+      jahrgang TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(feld_id, datum, jahrgang)
+    )
+  `);
 
   // Helfer-Bedarf Tabelle
   db.exec(`
@@ -152,13 +275,8 @@ function initializeTables() {
     )
   `);
 
-  // Migration: Spalte kuchenspende hinzufügen falls sie nicht existiert
-  try {
-    db.exec(`ALTER TABLE helfer_anmeldungen ADD COLUMN kuchenspende TEXT`);
-  } catch (error) {
-    // Spalte existiert bereits oder anderer Fehler - ignorieren
-  }
-  
+  addColumnIfMissing(db, 'helfer_anmeldungen', 'kuchenspende', 'kuchenspende TEXT');
+
   // Migrations-Tabelle erstellen
   db.exec(`
     CREATE TABLE IF NOT EXISTS db_migrations (
@@ -167,70 +285,46 @@ function initializeTables() {
       applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
-  // Strukturierte Migrationen ausführen
+
   runStructuredMigrations();
-}  /**
-   * Führt strukturierte Datenbankmigrationen aus, um die Struktur zu aktualisieren
-   */
-  function runStructuredMigrations() {
+}
+
+function runStructuredMigrations() {
     if (!db) return;
-    
+
     console.log('🔄 Prüfe strukturierte Datenbankmigrationen...');
-    
+
     // Liste aller Migrationen
     const migrations = [
       {
         name: 'add_updated_at_to_helfer_bedarf',
         run: () => {
-          try {
-            // Prüfen, ob die Spalte bereits existiert
-            const columns = db!.prepare(`PRAGMA table_info(helfer_bedarf)`).all() as any[];
-            const columnExists = columns.some(column => column.name === 'updated_at');
-            
-            if (!columnExists) {
-              console.log('🔧 Migration: Füge updated_at zu helfer_bedarf hinzu');
-              db!.exec(`ALTER TABLE helfer_bedarf ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP`);
-            }
-          } catch (error) {
-            console.error('❌ Fehler bei Migration add_updated_at_to_helfer_bedarf:', error);
-          }
+          addColumnIfMissing(db!, 'helfer_bedarf', 'updated_at', 'updated_at TEXT DEFAULT CURRENT_TIMESTAMP');
         }
       },
       {
         name: 'add_created_at_to_teams',
         run: () => {
-          try {
-            // Prüfen, ob die Spalte bereits existiert
-            const columns = db!.prepare(`PRAGMA table_info(teams)`).all() as any[];
-            const columnExists = columns.some(column => column.name === 'created_at');
-            
-            if (!columnExists) {
-              console.log('🔧 Migration: Füge created_at zu teams hinzu');
-              db!.exec(`ALTER TABLE teams ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
-            }
-          } catch (error) {
-            console.error('❌ Fehler bei Migration add_created_at_to_teams:', error);
-          }
+          addColumnIfMissing(db!, 'teams', 'created_at', 'created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
         }
       }
     ];
-  
+
   // Bereits ausgeführte Migrationen abrufen
   const rows = db.prepare('SELECT name FROM db_migrations').all() as any[];
   const appliedMigrations = rows.map(row => row.name as string);
-  
+
   // Neue Migrationen ausführen
   for (const migration of migrations) {
     if (!appliedMigrations.includes(migration.name)) {
       console.log(`🔄 Führe Migration aus: ${migration.name}`);
-      
+
       try {
         migration.run();
-        
+
         // Migration als ausgeführt markieren
         db.prepare('INSERT INTO db_migrations (name) VALUES (?)').run(migration.name);
-        
+
         console.log(`✅ Migration erfolgreich: ${migration.name}`);
       } catch (error) {
         console.error(`❌ Fehler bei Migration ${migration.name}:`, error);
@@ -241,28 +335,14 @@ function initializeTables() {
 
 function migrateDatabase() {
   if (!db) return;
-  
+
   try {
     console.log('🔄 Checking database migrations...');
-    
-    // Check if anmeldungen table has updated_at column
-    const anmeldungenColumns = db.prepare(`PRAGMA table_info(anmeldungen)`).all() as any[];
-    const hasUpdatedAt = anmeldungenColumns.some(col => col.name === 'updated_at');
-    
-    if (!hasUpdatedAt) {
-      console.log('➕ Adding updated_at column to anmeldungen table...');
-      db.exec(`ALTER TABLE anmeldungen ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
-    }
-    
-    // Check if teams table has created_at column
-    const teamsColumns = db.prepare(`PRAGMA table_info(teams)`).all() as any[];
-    const teamsHasCreatedAt = teamsColumns.some(col => col.name === 'created_at');
-    
-    if (!teamsHasCreatedAt) {
-      console.log('➕ Adding created_at column to teams table...');
-      db.exec(`ALTER TABLE teams ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
-    }
-    
+    addColumnIfMissing(db, 'anmeldungen', 'updated_at', 'updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    addColumnIfMissing(db, 'teams', 'created_at', 'created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    addColumnIfMissing(db, 'spiele', 'tore_team1', 'tore_team1 INTEGER DEFAULT 0');
+    addColumnIfMissing(db, 'spiele', 'tore_team2', 'tore_team2 INTEGER DEFAULT 0');
+
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.warn('⚠️ Database migration warning:', error);
@@ -286,9 +366,9 @@ export interface AnmeldungData {
 
 export function createAnmeldung(anmeldungData: AnmeldungData): string {
   const db = getDatabase();
-  
-  const anmeldungId = `anm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
+
+  const anmeldungId = createId('anm');
+
   // Transaction für Atomicity
   const transaction = db.transaction(() => {
     // Anmeldung einfügen
@@ -296,7 +376,7 @@ export function createAnmeldung(anmeldungData: AnmeldungData): string {
       INSERT INTO anmeldungen (id, verein, kontakt, email, mobil, kosten, status)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     insertAnmeldung.run(
       anmeldungId,
       anmeldungData.verein,
@@ -306,15 +386,15 @@ export function createAnmeldung(anmeldungData: AnmeldungData): string {
       anmeldungData.kosten,
       'angemeldet'
     );
-    
+
     // Teams einfügen
     const insertTeam = db.prepare(`
       INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     for (const team of anmeldungData.teams) {
-      const teamId = `team_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const teamId = createId('team');
       insertTeam.run(
         teamId,
         anmeldungId,
@@ -325,24 +405,24 @@ export function createAnmeldung(anmeldungData: AnmeldungData): string {
       );
     }
   });
-  
+
   transaction();
-  
+
   return anmeldungId;
 }
 
 export function getAllAnmeldungen() {
   const db = getDatabase();
-  
+
   const anmeldungen = db.prepare(`
     SELECT * FROM anmeldungen ORDER BY created_at DESC
   `).all() as any[];
-  
+
   // Teams für jede Anmeldung laden
   const getTeams = db.prepare(`
     SELECT * FROM teams WHERE anmeldung_id = ?
   `);
-  
+
   return anmeldungen.map(anmeldung => ({
     ...anmeldung,
     teams: getTeams.all(anmeldung.id)
@@ -351,17 +431,17 @@ export function getAllAnmeldungen() {
 
 export function getAnmeldungById(id: string) {
   const db = getDatabase();
-  
+
   const anmeldung = db.prepare(`
     SELECT * FROM anmeldungen WHERE id = ?
   `).get(id);
-  
+
   if (!anmeldung) return null;
-  
+
   const teams = db.prepare(`
     SELECT * FROM teams WHERE anmeldung_id = ?
   `).all(id);
-  
+
   return {
     ...anmeldung,
     teams
@@ -370,25 +450,322 @@ export function getAnmeldungById(id: string) {
 
 export function updateAnmeldungStatus(id: string, status: string) {
   const db = getDatabase();
-  
+
   const update = db.prepare(`
-    UPDATE anmeldungen 
-    SET status = ? 
+    UPDATE anmeldungen
+    SET status = ?
     WHERE id = ?
   `);
-  
+
   return update.run(status, id);
+}
+
+export function updateAnmeldungInfo(id: string, data: Partial<{
+  verein: string;
+  kontakt: string;
+  email: string;
+  mobil: string;
+  kosten: number;
+}>) {
+  const db = getDatabase();
+  const allowedFields = new Set(['verein', 'kontakt', 'email', 'mobil', 'kosten']);
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
+  for (const [key, value] of Object.entries(data)) {
+    if (!allowedFields.has(key) || value === undefined) {
+      continue;
+    }
+
+    fields.push(`${key} = ?`);
+    values.push(key === 'kosten' ? Number(value) : value);
+  }
+
+  if (fields.length === 0) {
+    return { changes: 0 };
+  }
+
+  values.push(id);
+
+  const update = db.prepare(`
+    UPDATE anmeldungen
+    SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+
+  return update.run(...values);
+}
+
+export function importAnmeldungen(
+  entries: RegistrationImportEntry[],
+  options: { mode: RegistrationImportMode; replaceTeams: boolean }
+): RegistrationImportResult {
+  const db = getDatabase();
+  const warnings: RegistrationImportWarning[] = [];
+  const result: RegistrationImportResult = {
+    rows: entries.reduce((sum, entry) => sum + Math.max(entry.sourceRows.length, 1), 0),
+    entries: entries.length,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    paymentsUpdated: 0,
+    teamsInserted: 0,
+    teamsReplaced: 0,
+    warnings,
+  };
+
+  const existingRows = db.prepare(`
+    SELECT id, verein, kontakt, email, mobil, kosten, status
+    FROM anmeldungen
+  `).all() as Array<{
+    id: string;
+    verein: string;
+    kontakt: string;
+    email: string;
+    mobil: string;
+    kosten: number;
+    status: string;
+  }>;
+
+  const byId = new Map(existingRows.map((row) => [row.id, row]));
+  const byEmail = groupExistingRows(existingRows, (row) => normalizeImportLookup(row.email));
+  const byVerein = groupExistingRows(existingRows, (row) => normalizeImportLookup(row.verein));
+  const byVereinEmail = groupExistingRows(existingRows, (row) => {
+    const verein = normalizeImportLookup(row.verein);
+    const email = normalizeImportLookup(row.email);
+    return verein && email ? `${verein}|${email}` : '';
+  });
+
+  const insertAnmeldung = db.prepare(`
+    INSERT INTO anmeldungen (id, verein, kontakt, email, mobil, kosten, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const updateAnmeldung = db.prepare(`
+    UPDATE anmeldungen
+    SET verein = ?, kontakt = ?, email = ?, mobil = ?, kosten = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  const deleteTeams = db.prepare(`DELETE FROM teams WHERE anmeldung_id = ?`);
+  const insertTeam = db.prepare(`
+    INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  function rememberExisting(row: (typeof existingRows)[number]) {
+    byId.set(row.id, row);
+    addGroupedRow(byVerein, normalizeImportLookup(row.verein), row);
+    addGroupedRow(byEmail, normalizeImportLookup(row.email), row);
+    const verein = normalizeImportLookup(row.verein);
+    const email = normalizeImportLookup(row.email);
+    addGroupedRow(byVereinEmail, verein && email ? `${verein}|${email}` : '', row);
+  }
+
+  function findExisting(entry: RegistrationImportEntry) {
+    if (entry.id && byId.has(entry.id)) {
+      return byId.get(entry.id);
+    }
+
+    const verein = normalizeImportLookup(entry.verein);
+    const email = normalizeImportLookup(entry.email || '');
+
+    if (verein && email) {
+      const match = getSingleGroupedRow(byVereinEmail, `${verein}|${email}`);
+      if (match) return match;
+    }
+
+    if (email) {
+      const match = getSingleGroupedRow(byEmail, email);
+      if (match) return match;
+    }
+
+    if (verein) {
+      const match = getSingleGroupedRow(byVerein, verein);
+      if (match) return match;
+    }
+
+    return null;
+  }
+
+  const transaction = db.transaction(() => {
+    for (const entry of entries) {
+      const existing = findExisting(entry);
+      const teams = sanitizeRegistrationImportTeams(entry.teams);
+      const hasPaymentPatch = entry.status !== undefined || entry.kosten !== undefined;
+
+      if (options.mode === 'payments_only' && !existing) {
+        result.skipped += 1;
+        warnings.push({
+          row: entry.sourceRows[0],
+          message: `Keine vorhandene Anmeldung für "${entry.verein || entry.email || 'unbekannt'}" gefunden.`,
+        });
+        continue;
+      }
+
+      if (existing) {
+        const nextVerein = entry.verein.trim() || existing.verein;
+        const nextKontakt = entry.kontakt?.trim() || existing.kontakt;
+        const nextEmail = entry.email?.trim() || existing.email;
+        const nextMobil = entry.mobil?.trim() || existing.mobil;
+        const nextKosten = entry.kosten ?? (options.mode === 'teams_payments' && teams.length > 0
+          ? calculateRegistrationCost(teams)
+          : Number(existing.kosten || 0));
+        const nextStatus = entry.status || (existing.status as 'angemeldet' | 'bezahlt' | 'storniert') || 'angemeldet';
+
+        updateAnmeldung.run(nextVerein, nextKontakt, nextEmail, nextMobil, Math.max(0, Math.round(nextKosten)), nextStatus, existing.id);
+
+        const shouldImportTeams = options.mode === 'teams_payments' && teams.length > 0;
+        if (shouldImportTeams) {
+          if (options.replaceTeams) {
+            deleteTeams.run(existing.id);
+            result.teamsReplaced += 1;
+          }
+
+          for (const team of teams) {
+            insertTeam.run(createId('team'), existing.id, team.kategorie, team.anzahl, team.schiri ? 1 : 0, team.spielstaerke || null);
+            result.teamsInserted += 1;
+          }
+        }
+
+        existing.verein = nextVerein;
+        existing.kontakt = nextKontakt;
+        existing.email = nextEmail;
+        existing.mobil = nextMobil;
+        existing.kosten = Math.max(0, Math.round(nextKosten));
+        existing.status = nextStatus;
+        result.updated += 1;
+        if (hasPaymentPatch) {
+          result.paymentsUpdated += 1;
+        }
+        continue;
+      }
+
+      if (options.mode === 'payments_only') {
+        result.skipped += 1;
+        continue;
+      }
+
+      if (!entry.verein.trim()) {
+        result.skipped += 1;
+        warnings.push({ row: entry.sourceRows[0], message: 'Verein fehlt, Eintrag übersprungen.' });
+        continue;
+      }
+
+      if (teams.length === 0) {
+        warnings.push({ row: entry.sourceRows[0], message: `Für "${entry.verein}" wurden keine Teamdaten gefunden.` });
+      }
+
+      if (!entry.kontakt?.trim() || !entry.email?.trim() || !entry.mobil?.trim()) {
+        warnings.push({
+          row: entry.sourceRows[0],
+          message: `Für "${entry.verein}" fehlen Kontakt-, E-Mail- oder Mobil-Daten. Der Eintrag wurde trotzdem angelegt.`,
+        });
+      }
+
+      const id = createId('anm');
+      const kosten = entry.kosten ?? calculateRegistrationCost(teams);
+      const row = {
+        id,
+        verein: entry.verein.trim(),
+        kontakt: entry.kontakt?.trim() || '',
+        email: entry.email?.trim() || '',
+        mobil: entry.mobil?.trim() || '',
+        kosten: Math.max(0, Math.round(kosten)),
+        status: entry.status || 'angemeldet',
+      };
+
+      insertAnmeldung.run(row.id, row.verein, row.kontakt, row.email, row.mobil, row.kosten, row.status);
+
+      for (const team of teams) {
+        insertTeam.run(createId('team'), row.id, team.kategorie, team.anzahl, team.schiri ? 1 : 0, team.spielstaerke || null);
+        result.teamsInserted += 1;
+      }
+
+      rememberExisting(row);
+      result.created += 1;
+      if (hasPaymentPatch) {
+        result.paymentsUpdated += 1;
+      }
+    }
+  });
+
+  transaction();
+
+  return result;
+}
+
+function sanitizeRegistrationImportTeams(teams: RegistrationImportTeam[]) {
+  const merged = new Map<string, RegistrationImportTeam>();
+
+  for (const team of teams) {
+    const kategorie = team.kategorie.trim();
+    const anzahl = Math.max(1, Math.floor(Number(team.anzahl || 1)));
+
+    if (!kategorie || !Number.isFinite(anzahl)) {
+      continue;
+    }
+
+    const spielstaerke = team.spielstaerke?.trim() || undefined;
+    const key = `${normalizeImportLookup(kategorie)}|${team.schiri ? '1' : '0'}|${normalizeImportLookup(spielstaerke || '')}`;
+    const existing = merged.get(key);
+
+    if (existing) {
+      existing.anzahl += anzahl;
+    } else {
+      merged.set(key, {
+        kategorie,
+        anzahl,
+        schiri: Boolean(team.schiri),
+        spielstaerke,
+      });
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+function normalizeImportLookup(value: string) {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase();
+}
+
+function groupExistingRows<T>(rows: T[], getKey: (row: T) => string) {
+  const grouped = new Map<string, T[]>();
+
+  for (const row of rows) {
+    addGroupedRow(grouped, getKey(row), row);
+  }
+
+  return grouped;
+}
+
+function addGroupedRow<T>(grouped: Map<string, T[]>, key: string, row: T) {
+  if (!key) {
+    return;
+  }
+
+  const rows = grouped.get(key) || [];
+  rows.push(row);
+  grouped.set(key, rows);
+}
+
+function getSingleGroupedRow<T>(grouped: Map<string, T[]>, key: string) {
+  const rows = grouped.get(key);
+  return rows && rows.length === 1 ? rows[0] : null;
 }
 
 export function getSpielplan(datum?: string) {
   const db = getDatabase();
-  
+
   if (datum) {
     return db.prepare(`
       SELECT * FROM spiele WHERE datum = ? ORDER BY zeit
     `).all(datum);
   }
-  
+
   return db.prepare(`
     SELECT * FROM spiele ORDER BY datum, zeit
   `).all();
@@ -403,14 +780,14 @@ export function createSpiel(spielData: {
   team2: string;
 }) {
   const db = getDatabase();
-  
-  const spielId = `spiel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
+
+  const spielId = createId('spiel');
+
   const insert = db.prepare(`
     INSERT INTO spiele (id, datum, zeit, feld, kategorie, team1, team2, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'geplant')
   `);
-  
+
   insert.run(
     spielId,
     spielData.datum,
@@ -420,48 +797,123 @@ export function createSpiel(spielData: {
     spielData.team1,
     spielData.team2
   );
-  
+
   return spielId;
 }
 
 export function updateSpielErgebnis(id: string, ergebnis: string, status: string = 'beendet') {
   const db = getDatabase();
-  
+
   const update = db.prepare(`
-    UPDATE spiele 
-    SET ergebnis = ?, status = ?, updated_at = CURRENT_TIMESTAMP 
+    UPDATE spiele
+    SET ergebnis = ?, status = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
-  
+
   return update.run(ergebnis, status, id);
 }
 
 export function getEinstellungen() {
   const db = getDatabase();
-  
+
   const einstellungen = db.prepare(`
     SELECT * FROM einstellungen
   `).all() as any[];
-  
+
   const result: Record<string, string> = {};
-  
+
   for (const setting of einstellungen) {
     result[setting.key] = setting.value;
   }
-  
+
   return result;
 }
 
 export function updateEinstellung(key: string, value: string) {
   const db = getDatabase();
-  
+
   const update = db.prepare(`
-    UPDATE einstellungen 
-    SET value = ?, updated_at = CURRENT_TIMESTAMP 
+    UPDATE einstellungen
+    SET value = ?, updated_at = CURRENT_TIMESTAMP
     WHERE key = ?
   `);
-  
+
   return update.run(value, key);
+}
+
+export function saveFeldJahrgangZuordnung(feldId: string, datum: string, jahrgang: string) {
+  const db = getDatabase();
+  const id = `${feldId}_${datum}_${jahrgang}`;
+
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO feld_jahrgang_zuordnungen (id, feld_id, datum, jahrgang)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  return insert.run(id, feldId, datum, jahrgang);
+}
+
+export function deleteFeldJahrgangZuordnung(feldId: string, datum: string, jahrgang: string) {
+  const db = getDatabase();
+
+  const deleteStmt = db.prepare(`
+    DELETE FROM feld_jahrgang_zuordnungen
+    WHERE feld_id = ? AND datum = ? AND jahrgang = ?
+  `);
+
+  return deleteStmt.run(feldId, datum, jahrgang);
+}
+
+export function getFeldJahrgangZuordnungen() {
+  const db = getDatabase();
+
+  const zuordnungen = db.prepare(`
+    SELECT feld_id, datum, jahrgang
+    FROM feld_jahrgang_zuordnungen
+    ORDER BY datum, feld_id, jahrgang
+  `).all() as Array<{ feld_id: string; datum: string; jahrgang: string }>;
+
+  return zuordnungen.reduce<Record<string, Record<string, string[]>>>((result, zuordnung) => {
+    result[zuordnung.feld_id] ??= {};
+    result[zuordnung.feld_id][zuordnung.datum] ??= [];
+    result[zuordnung.feld_id][zuordnung.datum].push(zuordnung.jahrgang);
+    return result;
+  }, {});
+}
+
+export function getStoredFeldEinstellungen(): FeldEinstellungen[] {
+  const db = getDatabase();
+
+  try {
+    const result = db.prepare(`
+      SELECT einstellungen FROM admin_settings
+      WHERE key = 'feldEinstellungen'
+      LIMIT 1
+    `).get() as { einstellungen: string } | undefined;
+
+    if (!result) {
+      return normalizeFeldEinstellungen(DEFAULT_FELD_EINSTELLUNGEN);
+    }
+
+    return normalizeFeldEinstellungen(JSON.parse(result.einstellungen));
+  } catch (error) {
+    console.warn('Feldeinstellungen konnten nicht geladen werden, verwende Defaults:', error);
+    return normalizeFeldEinstellungen(DEFAULT_FELD_EINSTELLUNGEN);
+  }
+}
+
+export function saveStoredFeldEinstellungen(feldEinstellungen: unknown) {
+  const db = getDatabase();
+  const normalizedFeldEinstellungen = normalizeFeldEinstellungen(feldEinstellungen);
+
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO admin_settings (key, einstellungen, updated_at)
+    VALUES (?, ?, datetime('now'))
+  `);
+
+  stmt.run('feldEinstellungen', JSON.stringify(normalizedFeldEinstellungen));
+
+  return normalizedFeldEinstellungen;
 }
 
 // Admin-Einstellungen verwalten
@@ -470,14 +922,14 @@ export function getAdminSettings() {
   const settings = db.prepare(`
     SELECT key, value FROM einstellungen
   `).all();
-  
+
   const result: any = {
-    turnierName: 'Rasenturnier Puschendorf 2025',
-    startgeld: 25,
-    schiriGeld: 20,
-    maxTeamsProKategorie: 8,
-    anmeldeschluss: '2025-06-30',
-    anzahlFelder: 4,
+    turnierName: TOURNAMENT_DEFAULTS.name,
+    startgeld: TOURNAMENT_DEFAULTS.teamFee,
+    schiriGeld: TOURNAMENT_DEFAULTS.missingRefereeFee,
+    maxTeamsProKategorie: TOURNAMENT_DEFAULTS.maxTeamsPerCategorySelection,
+    anmeldeschluss: TOURNAMENT_DEFAULTS.registrationDeadline,
+    anzahlFelder: DEFAULT_FELD_EINSTELLUNGEN.length,
     spielzeit: 12,
     pausenzeit: 3,
     adminEmail: 'admin@sv-puschendorf.de',
@@ -485,8 +937,18 @@ export function getAdminSettings() {
     sichtbarkeit: 'public' as const,
     zahlungsarten: ['Überweisung', 'PayPal', 'Barzahlung'],
     datenschutz: true,
-    turnierStartDatum: '2025-07-05',
-    turnierEndDatum: '2025-07-06',
+    turnierStartDatum: TOURNAMENT_DEFAULTS.startDate,
+    turnierEndDatum: TOURNAMENT_DEFAULTS.endDate,
+    samstagStartzeit: TOURNAMENT_DEFAULTS.saturdayStartTime,
+    samstagEndzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
+    sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
+    sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
+    samstagToreSichtbar: false,
+    sonntagToreSichtbar: true,
+    ergebnisTabellenAktiv: false,
+    anmeldungAktiv: true,
+    spielplanStatus: 'draft' as SpielplanStatus,
+    spielplanPublishedAt: null as string | null,
     adminPasskey: ''
   };
 
@@ -547,6 +1009,24 @@ export function getAdminSettings() {
       case 'sonntagEndzeit':
         result.sonntagEndzeit = setting.value;
         break;
+      case 'samstag_tore_sichtbar':
+        result.samstagToreSichtbar = setting.value === 'true';
+        break;
+      case 'sonntag_tore_sichtbar':
+        result.sonntagToreSichtbar = setting.value !== 'false';
+        break;
+      case 'ergebnis_tabellen_aktiv':
+        result.ergebnisTabellenAktiv = setting.value === 'true';
+        break;
+      case 'anmeldung_aktiv':
+        result.anmeldungAktiv = setting.value !== 'false';
+        break;
+      case 'spielplan_status':
+        result.spielplanStatus = setting.value === 'published' ? 'published' : 'draft';
+        break;
+      case 'spielplan_published_at':
+        result.spielplanPublishedAt = setting.value || null;
+        break;
       case 'admin_passkey':
         result.adminPasskey = setting.value;
         break;
@@ -559,7 +1039,7 @@ export function getAdminSettings() {
 export function saveAdminSettings(settings: any) {
   const db = getDatabase();
   const updateSetting = db.prepare(`
-    INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at) 
+    INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
   `);
 
@@ -579,10 +1059,16 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('13', 'turnier_start_datum', settings.turnierStartDatum);
     updateSetting.run('14', 'turnier_end_datum', settings.turnierEndDatum);
     // Neue Zeiteinstellungen
-    updateSetting.run('15', 'samstagStartzeit', settings.samstagStartzeit || '09:00');
-    updateSetting.run('16', 'samstagEndzeit', settings.samstagEndzeit || '18:00');
-    updateSetting.run('17', 'sonntagStartzeit', settings.sonntagStartzeit || '09:00');
-    updateSetting.run('18', 'sonntagEndzeit', settings.sonntagEndzeit || '18:00');
+    updateSetting.run('15', 'samstagStartzeit', settings.samstagStartzeit || TOURNAMENT_DEFAULTS.saturdayStartTime);
+    updateSetting.run('16', 'samstagEndzeit', settings.samstagEndzeit || TOURNAMENT_DEFAULTS.saturdayEndTime);
+    updateSetting.run('17', 'sonntagStartzeit', settings.sonntagStartzeit || TOURNAMENT_DEFAULTS.sundayStartTime);
+    updateSetting.run('18', 'sonntagEndzeit', settings.sonntagEndzeit || TOURNAMENT_DEFAULTS.sundayEndTime);
+    updateSetting.run('20', 'spielplan_status', settings.spielplanStatus === 'published' ? 'published' : 'draft');
+    updateSetting.run('21', 'spielplan_published_at', settings.spielplanPublishedAt || '');
+    updateSetting.run('22', 'samstag_tore_sichtbar', settings.samstagToreSichtbar ? 'true' : 'false');
+    updateSetting.run('23', 'sonntag_tore_sichtbar', settings.sonntagToreSichtbar ? 'true' : 'false');
+    updateSetting.run('24', 'anmeldung_aktiv', settings.anmeldungAktiv === false ? 'false' : 'true');
+    updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
     // Sicher speichern des Passkeys (in produktiver Umgebung sollte dieser gehasht werden)
     if (settings.adminPasskey) {
       updateSetting.run('19', 'admin_passkey', settings.adminPasskey);
@@ -592,30 +1078,141 @@ export function saveAdminSettings(settings: any) {
   return transaction();
 }
 
+export function setSpielplanPublicationStatus(status: SpielplanStatus) {
+  const db = getDatabase();
+  const nextStatus = status === 'published' ? 'published' : 'draft';
+  const publishedAt = nextStatus === 'published' ? new Date().toISOString() : '';
+  const updateSetting = db.prepare(`
+    INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+  `);
+
+  const transaction = db.transaction(() => {
+    updateSetting.run('20', 'spielplan_status', nextStatus);
+    updateSetting.run('21', 'spielplan_published_at', publishedAt);
+  });
+
+  transaction();
+
+  return {
+    spielplanStatus: nextStatus,
+    spielplanPublishedAt: publishedAt || null,
+  };
+}
+
+export function getSpielplanPublicationStatus() {
+  const settings = getAdminSettings();
+
+  return {
+    spielplanStatus: settings.spielplanStatus as SpielplanStatus,
+    spielplanPublishedAt: settings.spielplanPublishedAt as string | null,
+  };
+}
+
+export function getStoredLiveTimers() {
+  const db = getDatabase();
+  cleanupStoredLiveTimers();
+
+  const rows = db.prepare(`
+    SELECT *
+    FROM spiel_live_timers
+  `).all() as Array<{
+    spiel_id: string;
+    live_time: string | null;
+    status: string;
+    start_time: number | null;
+    elapsed_time: number | null;
+    is_second_half: number | null;
+    halbzeit_start_time: number | null;
+    last_update: number;
+  }>;
+
+  return rows.reduce<Record<string, StoredLiveTimer>>((result, row) => {
+    result[row.spiel_id] = {
+      liveTime: row.live_time || '00:00',
+      status: row.status,
+      startTime: row.start_time ?? undefined,
+      elapsedTime: row.elapsed_time ?? 0,
+      isSecondHalf: Boolean(row.is_second_half),
+      halbzeitStartTime: row.halbzeit_start_time ?? undefined,
+      lastUpdate: row.last_update,
+    };
+    return result;
+  }, {});
+}
+
+export function saveStoredLiveTimer(spielId: string, timer: Partial<StoredLiveTimer>) {
+  const db = getDatabase();
+  const now = Date.now();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO spiel_live_timers (
+      spiel_id,
+      live_time,
+      status,
+      start_time,
+      elapsed_time,
+      is_second_half,
+      halbzeit_start_time,
+      last_update,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `);
+
+  return stmt.run(
+    spielId,
+    timer.liveTime || '00:00',
+    timer.status || 'laufend',
+    timer.startTime ?? null,
+    timer.elapsedTime ?? 0,
+    timer.isSecondHalf ? 1 : 0,
+    timer.halbzeitStartTime ?? null,
+    timer.lastUpdate || now
+  );
+}
+
+export function deleteStoredLiveTimer(spielId: string) {
+  const db = getDatabase();
+  return db.prepare(`
+    DELETE FROM spiel_live_timers
+    WHERE spiel_id = ?
+  `).run(spielId);
+}
+
+export function cleanupStoredLiveTimers(maxAgeMs = 12 * 60 * 60 * 1000) {
+  const db = getDatabase();
+  const cutoff = Date.now() - maxAgeMs;
+
+  return db.prepare(`
+    DELETE FROM spiel_live_timers
+    WHERE last_update < ?
+  `).run(cutoff);
+}
+
 // Erweiterte Statistiken
 export function getStatistiken() {
   const db = getDatabase();
-  
+
   const anmeldungen = db.prepare('SELECT COUNT(*) as count FROM anmeldungen').get() as { count: number };
   const teams = db.prepare('SELECT COUNT(*) as count FROM teams').get() as { count: number };
   const bezahlt = db.prepare('SELECT COUNT(*) as count FROM anmeldungen WHERE status = ?').get('bezahlt') as { count: number };
   const gesamtKosten = db.prepare('SELECT SUM(kosten) as total FROM anmeldungen').get() as { total: number };
-  
+
   // Kategorien-Statistiken
   const kategorienStats = db.prepare(`
-    SELECT kategorie, COUNT(*) as count 
-    FROM teams 
+    SELECT kategorie, COUNT(*) as count
+    FROM teams
     GROUP BY kategorie
   `).all() as { kategorie: string; count: number }[];
-  
+
   const kategorien: { [key: string]: number } = {};
   kategorienStats.forEach(stat => {
     kategorien[stat.kategorie] = stat.count;
   });
-  
+
   // Verwendete Felder
   const fieldsUsed = db.prepare(`
-    SELECT COUNT(DISTINCT feld) as count 
+    SELECT COUNT(DISTINCT feld) as count
     FROM spiele
   `).get() as { count: number };
 
@@ -640,40 +1237,41 @@ export function updateSpiel(id: string, spielData: Partial<{
   ergebnis: string;
 }>) {
   const db = getDatabase();
-  
-  const fields = [];
-  const values = [];
-  
+  const allowedFields = new Set(['datum', 'zeit', 'feld', 'kategorie', 'team1', 'team2', 'status', 'ergebnis']);
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
   for (const [key, value] of Object.entries(spielData)) {
-    if (value !== undefined) {
+    if (value !== undefined && allowedFields.has(key)) {
       fields.push(`${key} = ?`);
       values.push(value);
     }
   }
-  
+
   if (fields.length === 0) {
     return { changes: 0 };
   }
-  
+
   values.push(id);
-  
+
   const update = db.prepare(`
-    UPDATE spiele 
-    SET ${fields.join(', ')} 
+    UPDATE spiele
+    SET ${fields.join(', ')}
     WHERE id = ?
   `);
-  
+
   return update.run(...values);
 }
 
 export function deleteSpiel(id: string) {
   const db = getDatabase();
-  
+
   const deleteStmt = db.prepare(`
-    DELETE FROM spiele 
+    DELETE FROM spiele
     WHERE id = ?
   `);
-  
+
   return deleteStmt.run(id);
 }
 
@@ -681,36 +1279,39 @@ export function deleteSpiel(id: string) {
 
 export function getAllHelferBedarf() {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    SELECT * FROM helfer_bedarf 
+    SELECT * FROM helfer_bedarf
     ORDER BY datum ASC, startzeit ASC
   `);
-  
+
   return stmt.all();
 }
 
 export function getAllHelferAnmeldungen() {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    SELECT * FROM helfer_anmeldungen 
+    SELECT * FROM helfer_anmeldungen
     ORDER BY created_at DESC
   `);
-  
+
   return stmt.all();
 }
 
 export function getHelferLink() {
+  return getHelferLinkRecord()?.value || '';
+}
+
+function getHelferLinkRecord() {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    SELECT value FROM einstellungen 
+    SELECT value, updated_at FROM einstellungen
     WHERE key = 'helfer_link'
   `);
-  
-  const result = stmt.get() as { value: string } | undefined;
-  return result?.value || '';
+
+  return stmt.get() as { value: string; updated_at?: string } | undefined;
 }
 
 export function createHelferBedarf(bedarf: {
@@ -724,15 +1325,15 @@ export function createHelferBedarf(bedarf: {
   aktiv: boolean;
 }) {
   const db = getDatabase();
-  const id = 'bedarf_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-  
+  const id = createId('bedarf');
+
   const stmt = db.prepare(`
     INSERT INTO helfer_bedarf (
-      id, titel, beschreibung, datum, startzeit, endzeit, 
+      id, titel, beschreibung, datum, startzeit, endzeit,
       anzahlBenötigt, kategorie, aktiv, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  
+
   const result = stmt.run(
     id,
     bedarf.titel,
@@ -745,52 +1346,52 @@ export function createHelferBedarf(bedarf: {
     bedarf.aktiv ? 1 : 0,
     new Date().toISOString()
   );
-  
+
   return { id, ...result };
 }
 
 export function deleteHelferBedarf(bedarfId: string) {
   const db = getDatabase();
-  
+
   // Zuerst zugehörige Anmeldungen löschen
   const deleteAnmeldungenStmt = db.prepare('DELETE FROM helfer_anmeldungen WHERE helferBedarfId = ?');
   deleteAnmeldungenStmt.run(bedarfId);
-  
+
   // Dann den Bedarf löschen
   const deleteBedarfStmt = db.prepare('DELETE FROM helfer_bedarf WHERE id = ?');
   const result = deleteBedarfStmt.run(bedarfId);
-  
+
   return result;
 }
 
 export function generateHelferLink() {
   const db = getDatabase();
-  
+
   // Generiere geheimen Token
-  const token = 'hlf_' + Math.random().toString(36).substr(2, 20) + Date.now().toString(36);
+  const token = `hlf_${randomUUID().replace(/-/g, '')}`;
   const helferLink = `https://rasenturnier.sv-puschendorf.de/helfer/${token}`;
-  
+
   // Einfachere Lösung: INSERT OR REPLACE mit expliziter ID
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at) 
+    INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at)
     VALUES (?, ?, ?, ?)
   `);
-  
+
   const now = new Date().toISOString();
   stmt.run('helfer_link_id', 'helfer_link', helferLink, now);
-  
+
   return helferLink;
 }
 
 export function updateHelferStatus(anmeldungId: string, status: string) {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    UPDATE helfer_anmeldungen 
-    SET status = ?, updated_at = ? 
+    UPDATE helfer_anmeldungen
+    SET status = ?, updated_at = ?
     WHERE id = ?
   `);
-  
+
   const result = stmt.run(status, new Date().toISOString(), anmeldungId);
   return result;
 }
@@ -804,15 +1405,15 @@ export function createHelferAnmeldung(anmeldung: {
   kuchenspende?: string;
 }) {
   const db = getDatabase();
-  const id = 'ha_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-  
+  const id = createId('ha');
+
   const stmt = db.prepare(`
     INSERT INTO helfer_anmeldungen (
       id, helferBedarfId, name, email, telefon, bemerkung, kuchenspende,
       status, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'angemeldet', ?, ?)
   `);
-  
+
   const now = new Date().toISOString();
   const result = stmt.run(
     id,
@@ -825,25 +1426,53 @@ export function createHelferAnmeldung(anmeldung: {
     now,
     now
   );
-  
+
   return { id, ...result };
 }
 
 export function getActiveHelferBedarf() {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    SELECT * FROM helfer_bedarf 
+    SELECT * FROM helfer_bedarf
     WHERE aktiv = 1
     ORDER BY datum ASC, startzeit ASC
   `);
-  
+
   return stmt.all();
 }
 
 export function validateHelferToken(token: string) {
-  const helferLink = getHelferLink();
-  return helferLink.includes(token);
+  const normalizedToken = token.trim();
+
+  if (normalizedToken.length < 24) {
+    return false;
+  }
+
+  const record = getHelferLinkRecord();
+  const storedToken = record ? extractHelferToken(record.value) : '';
+
+  if (!storedToken || storedToken !== normalizedToken) {
+    return false;
+  }
+
+  if (!record?.updated_at) {
+    return false;
+  }
+
+  const updatedAt = new Date(record.updated_at).getTime();
+  const maxAgeMs = 90 * 24 * 60 * 60 * 1000;
+
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt <= maxAgeMs;
+}
+
+function extractHelferToken(helferLink: string) {
+  try {
+    const url = new URL(helferLink);
+    return url.pathname.split('/').filter(Boolean).pop() || '';
+  } catch {
+    return helferLink.split('/').filter(Boolean).pop() || '';
+  }
 }
 
 export function updateHelferBedarf(bedarfId: string, bedarf: Partial<{
@@ -857,12 +1486,22 @@ export function updateHelferBedarf(bedarfId: string, bedarf: Partial<{
   aktiv: boolean;
 }>) {
   const db = getDatabase();
-  
-  const fields = [];
-  const values = [];
-  
+  const allowedFields = new Set([
+    'titel',
+    'beschreibung',
+    'datum',
+    'startzeit',
+    'endzeit',
+    'anzahlBenötigt',
+    'kategorie',
+    'aktiv',
+  ]);
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
   for (const [key, value] of Object.entries(bedarf)) {
-    if (value !== undefined) {
+    if (value !== undefined && allowedFields.has(key)) {
       if (key === 'aktiv') {
         fields.push(`${key} = ?`);
         values.push(value ? 1 : 0);
@@ -872,17 +1511,17 @@ export function updateHelferBedarf(bedarfId: string, bedarf: Partial<{
       }
     }
   }
-  
+
   if (fields.length === 0) {
     return { changes: 0 };
   }
-  
+
   try {
     // Versuchen, updated_at hinzuzufügen, wenn die Spalte existiert
     try {
       const columns = db.prepare(`PRAGMA table_info(helfer_bedarf)`).all() as any[];
       const hasUpdatedAt = columns.some(column => column.name === 'updated_at');
-      
+
       if (hasUpdatedAt) {
         fields.push('updated_at = ?');
         values.push(new Date().toISOString());
@@ -891,15 +1530,15 @@ export function updateHelferBedarf(bedarfId: string, bedarf: Partial<{
       console.warn('Konnte updated_at Spalte nicht überprüfen:', columnError);
       // Wenn wir nicht prüfen können, ob die Spalte existiert, versuchen wir es ohne updated_at
     }
-    
+
     values.push(bedarfId);
-    
+
     const stmt = db.prepare(`
-      UPDATE helfer_bedarf 
-      SET ${fields.join(', ')} 
+      UPDATE helfer_bedarf
+      SET ${fields.join(', ')}
       WHERE id = ?
     `);
-    
+
     return stmt.run(...values);
   } catch (error) {
     console.error('Fehler beim Aktualisieren von helfer_bedarf:', error);
@@ -909,58 +1548,107 @@ export function updateHelferBedarf(bedarfId: string, bedarf: Partial<{
 
 export function getHelferAnmeldungenForBedarf(bedarfId: string) {
   const db = getDatabase();
-  
+
   const stmt = db.prepare(`
-    SELECT * FROM helfer_anmeldungen 
+    SELECT * FROM helfer_anmeldungen
     WHERE helferBedarfId = ?
     ORDER BY created_at ASC
   `);
-  
+
   return stmt.all(bedarfId);
+}
+
+export function getPublicHelferAnmeldungenForBedarf(bedarfId: string) {
+  const rows = getHelferAnmeldungenForBedarf(bedarfId) as Array<{
+    id: string;
+    helferBedarfId: string;
+    name: string;
+    email: string;
+    status: string;
+    created_at: string;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    helferBedarfId: row.helferBedarfId,
+    name: maskPublicHelperName(row.name),
+    email: maskPublicEmail(row.email),
+    status: row.status,
+    created_at: row.created_at,
+  }));
+}
+
+function maskPublicHelperName(name: string) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const lastName = parts.at(-1);
+
+  return lastName ? `*** ${lastName}` : 'Angemeldet';
+}
+
+function maskPublicEmail(email: string) {
+  const domain = String(email || '').split('@')[1];
+
+  return domain ? `***@${domain}` : '';
+}
+
+export function deleteHelferAnmeldung(anmeldungId: string) {
+  const db = getDatabase();
+
+  const stmt = db.prepare(`
+    DELETE FROM helfer_anmeldungen
+    WHERE id = ?
+  `);
+
+  return stmt.run(anmeldungId);
 }
 
 export function deleteAnmeldung(id: string) {
   const db = getDatabase();
-  
+
   // Transaction um sicherzustellen, dass beide Löschungen erfolgreich sind
   const transaction = db.transaction(() => {
     // Zuerst alle Teams löschen, die zu dieser Anmeldung gehören
     const deleteTeams = db.prepare(`
-      DELETE FROM teams 
+      DELETE FROM teams
       WHERE anmeldung_id = ?
     `);
-    
+
     // Dann die Anmeldung löschen
     const deleteAnmeldung = db.prepare(`
-      DELETE FROM anmeldungen 
+      DELETE FROM anmeldungen
       WHERE id = ?
     `);
-    
+
     const teamsResult = deleteTeams.run(id);
     const anmeldungResult = deleteAnmeldung.run(id);
-    
+
     return {
       teamsDeleted: teamsResult.changes,
       anmeldungDeleted: anmeldungResult.changes
     };
   });
-  
+
   return transaction();
 }
 
 export function deleteAllSpiele() {
   const db = getDatabase();
-  
+
   console.log('🧹 Lösche alle Spiele aus der Datenbank...');
-  
+
+  const deleteTimersStmt = db.prepare(`
+    DELETE FROM spiel_live_timers
+  `);
   const deleteStmt = db.prepare(`
     DELETE FROM spiele
   `);
-  
+
+  deleteTimersStmt.run();
   const result = deleteStmt.run();
-  
+  setSpielplanPublicationStatus('draft');
+
   console.log(`✅ ${result.changes} Spiele wurden aus der Datenbank gelöscht`);
-  
+
   return {
     deleted: result.changes
   };
@@ -968,32 +1656,32 @@ export function deleteAllSpiele() {
 
 export function flushHelferDatabase() {
   const db = getDatabase();
-  
+
   try {
     // Begin transaction
     db.exec('BEGIN TRANSACTION');
-    
+
     // Delete all helper applications first (foreign key constraint)
     const deleteAnmeldungenStmt = db.prepare('DELETE FROM helfer_anmeldungen');
     const anmeldungenResult = deleteAnmeldungenStmt.run();
-    
+
     // Delete all helper requirements
     const deleteBedarfStmt = db.prepare('DELETE FROM helfer_bedarf');
     const bedarfResult = deleteBedarfStmt.run();
-    
+
     // Remove helper link from settings
     const deleteLinkStmt = db.prepare('DELETE FROM einstellungen WHERE key = ?');
     const linkResult = deleteLinkStmt.run('helfer_link');
-    
+
     // Commit transaction
     db.exec('COMMIT');
-    
+
     console.log('🗑️ Helper database flushed:', {
       anmeldungen: anmeldungenResult.changes,
       bedarf: bedarfResult.changes,
       link: linkResult.changes
     });
-    
+
     return {
       anmeldungen: anmeldungenResult.changes,
       bedarf: bedarfResult.changes,
@@ -1009,11 +1697,11 @@ export function flushHelferDatabase() {
 
 export function createHelferDemoData() {
   const db = getDatabase();
-  
+
   try {
     // Begin transaction
     db.exec('BEGIN TRANSACTION');
-    
+
     // Demo helper requirements
     const demoData = [
       {
@@ -1097,20 +1785,20 @@ export function createHelferDemoData() {
         aktiv: true
       }
     ];
-    
+
     // Insert demo helper requirements
     const insertBedarfStmt = db.prepare(`
       INSERT INTO helfer_bedarf (
-        id, titel, beschreibung, datum, startzeit, endzeit, 
+        id, titel, beschreibung, datum, startzeit, endzeit,
         anzahlBenötigt, kategorie, aktiv, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     const bedarfIds: string[] = [];
     demoData.forEach((bedarf, index) => {
       const id = `demo_bedarf_${index + 1}_${Date.now()}`;
       bedarfIds.push(id);
-      
+
       insertBedarfStmt.run(
         id,
         bedarf.titel,
@@ -1124,7 +1812,7 @@ export function createHelferDemoData() {
         new Date().toISOString()
       );
     });
-    
+
     // Demo helper applications
     const demoAnmeldungen = [
       {
@@ -1177,7 +1865,7 @@ export function createHelferDemoData() {
         status: 'angemeldet'
       }
     ];
-    
+
     // Insert demo applications
     const insertAnmeldungStmt = db.prepare(`
       INSERT INTO helfer_anmeldungen (
@@ -1185,11 +1873,11 @@ export function createHelferDemoData() {
         status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     demoAnmeldungen.forEach((anmeldung, index) => {
       const id = `demo_anmeldung_${index + 1}_${Date.now()}`;
       const now = new Date().toISOString();
-      
+
       insertAnmeldungStmt.run(
         id,
         anmeldung.helferBedarfId,
@@ -1203,27 +1891,27 @@ export function createHelferDemoData() {
         now
       );
     });
-    
+
     // Generate demo helper link
-    const token = 'demo_hlf_' + Math.random().toString(36).substr(2, 20);
+    const token = `demo_hlf_${randomUUID().replace(/-/g, '')}`;
     const helferLink = `https://rasenturnier.sv-puschendorf.de/helfer/${token}`;
-    
+
     const insertLinkStmt = db.prepare(`
-      INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at) 
+      INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at)
       VALUES (?, ?, ?, ?)
     `);
-    
+
     insertLinkStmt.run('helfer_link_id', 'helfer_link', helferLink, new Date().toISOString());
-    
+
     // Commit transaction
     db.exec('COMMIT');
-    
+
     console.log('🎭 Helper demo data created:', {
       bedarf: demoData.length,
       anmeldungen: demoAnmeldungen.length,
       helferLink
     });
-    
+
     return {
       bedarf: demoData.length,
       anmeldungen: demoAnmeldungen.length,
@@ -1239,11 +1927,11 @@ export function createHelferDemoData() {
 
 export function createAnmeldungenDemoData() {
   const db = getDatabase();
-  
+
   try {
     // Begin transaction
     db.exec('BEGIN TRANSACTION');
-    
+
     // Demo-Anmeldungen mit verschiedenen Leistungsstufen
     const demoAnmeldungen = [
       {
@@ -1337,38 +2025,27 @@ export function createAnmeldungenDemoData() {
         status: "angemeldet"
       }
     ];
-    
-    // Berechne Startgeld (25€) und Schiedsrichtergeld (20€)
-    const STARTGELD = 25;
-    const SCHIRI_GELD = 20;
-    
+
     const insertAnmeldungStmt = db.prepare(`
       INSERT INTO anmeldungen (id, verein, kontakt, email, mobil, kosten, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     const insertTeamStmt = db.prepare(`
       INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
+
     const anmeldungIds: string[] = [];
-    
-    demoAnmeldungen.forEach((anmeldung, index) => {
-      const anmeldungId = `demo_anm_${index + 1}_${Date.now()}`;
+
+    demoAnmeldungen.forEach((anmeldung) => {
+      const anmeldungId = createId('demo_anm');
       anmeldungIds.push(anmeldungId);
-      
-      // Berechne Gesamtkosten
-      let gesamtKosten = 0;
-      anmeldung.teams.forEach(team => {
-        gesamtKosten += team.anzahl * STARTGELD;
-        if (team.schiri) {
-          gesamtKosten -= SCHIRI_GELD; // Schiedsrichter-Rabatt
-        }
-      });
-      
+
+      const gesamtKosten = calculateRegistrationCost(anmeldung.teams);
+
       const now = new Date().toISOString();
-      
+
       // Anmeldung einfügen
       insertAnmeldungStmt.run(
         anmeldungId,
@@ -1381,11 +2058,11 @@ export function createAnmeldungenDemoData() {
         now,
         now
       );
-      
+
       // Teams einfügen
-      anmeldung.teams.forEach((team, teamIndex) => {
-        const teamId = `demo_team_${index + 1}_${teamIndex + 1}_${Date.now()}`;
-        
+      anmeldung.teams.forEach((team) => {
+        const teamId = createId('demo_team');
+
         insertTeamStmt.run(
           teamId,
           anmeldungId,
@@ -1396,16 +2073,16 @@ export function createAnmeldungenDemoData() {
         );
       });
     });
-    
+
     // Commit transaction
     db.exec('COMMIT');
-    
+
     console.log('🏆 Anmeldungen demo data created:', {
       anmeldungen: demoAnmeldungen.length,
       totalTeams: demoAnmeldungen.reduce((sum, anm) => sum + anm.teams.reduce((teamSum, team) => teamSum + team.anzahl, 0), 0),
       leistungsstufen: ['Anfänger', 'Fortgeschritten', 'Erfahren', 'Sehr erfahren']
     });
-    
+
     return {
       anmeldungen: demoAnmeldungen.length,
       totalTeams: demoAnmeldungen.reduce((sum, anm) => sum + anm.teams.reduce((teamSum, team) => teamSum + team.anzahl, 0), 0)
@@ -1420,27 +2097,27 @@ export function createAnmeldungenDemoData() {
 
 export function flushAnmeldungenDatabase() {
   const db = getDatabase();
-  
+
   try {
     // Begin transaction
     db.exec('BEGIN TRANSACTION');
-    
+
     // Delete teams first (foreign key constraint)
     const deleteTeamsStmt = db.prepare('DELETE FROM teams');
     const teamsResult = deleteTeamsStmt.run();
-    
+
     // Delete anmeldungen
     const deleteAnmeldungenStmt = db.prepare('DELETE FROM anmeldungen');
     const anmeldungenResult = deleteAnmeldungenStmt.run();
-    
+
     // Commit transaction
     db.exec('COMMIT');
-    
+
     console.log('🗑️ Anmeldungen database flushed:', {
       teams: teamsResult.changes,
       anmeldungen: anmeldungenResult.changes
     });
-    
+
     return {
       teams: teamsResult.changes,
       anmeldungen: anmeldungenResult.changes

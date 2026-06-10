@@ -1,73 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/db';
+import { getStoredFeldEinstellungen, saveStoredFeldEinstellungen } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
-
-interface FeldEinstellungen {
-  id: string;
-  name: string;
-  spielzeit: number;
-  pausenzeit: number;
-  halbzeitpause: number;
-  zweiHalbzeiten: boolean;
-  erlaubteJahrgaenge: string[];
-  erlaubteJahrgaengeProTag?: {
-    [datum: string]: string[];
-  };
-}
-
-// Default fallback configuration
-const DEFAULT_FELD_EINSTELLUNGEN: FeldEinstellungen[] = [
-  {
-    id: 'feld1',
-    name: 'Feld 1',
-    spielzeit: 10,
-    pausenzeit: 2,
-    halbzeitpause: 0,
-    zweiHalbzeiten: false,
-    erlaubteJahrgaenge: [],
-    erlaubteJahrgaengeProTag: {}
-  },
-  {
-    id: 'feld2',
-    name: 'Feld 2',
-    spielzeit: 12,
-    pausenzeit: 3,
-    halbzeitpause: 0,
-    zweiHalbzeiten: false,
-    erlaubteJahrgaenge: [],
-    erlaubteJahrgaengeProTag: {}
-  },
-  {
-    id: 'feld3',
-    name: 'Feld 3',
-    spielzeit: 15,
-    pausenzeit: 2,
-    halbzeitpause: 0,
-    zweiHalbzeiten: false,
-    erlaubteJahrgaenge: [],
-    erlaubteJahrgaengeProTag: {}
-  },
-  {
-    id: 'feld4',
-    name: 'Feld 4',
-    spielzeit: 8,
-    pausenzeit: 2,
-    halbzeitpause: 2,
-    zweiHalbzeiten: true,
-    erlaubteJahrgaenge: [],
-    erlaubteJahrgaengeProTag: {}
-  },
-  {
-    id: 'feld5',
-    name: 'Beachfeld',
-    spielzeit: 12,
-    pausenzeit: 3,
-    halbzeitpause: 0,
-    zweiHalbzeiten: false,
-    erlaubteJahrgaenge: [],
-    erlaubteJahrgaengeProTag: {}
-  }
-];
+import { DEFAULT_FELD_EINSTELLUNGEN } from '@/lib/tournament';
 
 export async function GET(request: NextRequest) {
   // Verify authentication for GET requests
@@ -81,44 +15,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const db = getDatabase();
-    
-    // Ensure admin_settings table exists
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS admin_settings (
-          key TEXT PRIMARY KEY,
-          einstellungen TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `);
-    } catch (tableError) {
-      console.warn('Could not create admin_settings table:', tableError);
-    }
-    
-    // Try to get field settings from database
-    try {
-      const result = db.prepare(`
-        SELECT einstellungen FROM admin_settings 
-        WHERE key = 'feldEinstellungen'
-        LIMIT 1
-      `).get() as { einstellungen: string } | undefined;
-      
-      if (result) {
-        const feldEinstellungen = JSON.parse(result.einstellungen);
-        return NextResponse.json({
-          success: true,
-          feldEinstellungen
-        });
-      }
-    } catch (dbError) {
-      console.warn('Could not load field settings from database:', dbError);
-    }
-    
-    // Return default configuration if no database settings found
     return NextResponse.json({
       success: true,
-      feldEinstellungen: DEFAULT_FELD_EINSTELLUNGEN
+      feldEinstellungen: getStoredFeldEinstellungen()
     });
 
   } catch (error) {
@@ -155,32 +54,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const db = getDatabase();
-    
-    // Ensure admin_settings table exists
-    try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS admin_settings (
-          key TEXT PRIMARY KEY,
-          einstellungen TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `);
-    } catch (tableError) {
-      console.warn('Could not create admin_settings table:', tableError);
-    }
-    
-    // Save field settings to database
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO admin_settings (key, einstellungen, updated_at)
-      VALUES (?, ?, datetime('now'))
-    `);
-    
-    stmt.run('feldEinstellungen', JSON.stringify(feldEinstellungen));
+    const savedFeldEinstellungen = saveStoredFeldEinstellungen(feldEinstellungen);
     
     return NextResponse.json({
       success: true,
-      message: 'Field settings saved successfully'
+      message: 'Field settings saved successfully',
+      feldEinstellungen: savedFeldEinstellungen
     });
 
   } catch (error) {

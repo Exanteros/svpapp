@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabase } from '@/lib/db';
+import {
+  deleteStoredLiveTimer,
+  getDatabase,
+  getAdminSettings,
+  getStoredFeldEinstellungen,
+  getStoredLiveTimers,
+  saveStoredLiveTimer,
+} from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+import { notifySpielplanChanged } from '@/lib/spielplan-events';
+import { areScoresPublicForDate, formatScheduleCategoryLabel, resolveFeldEinstellungenForDate } from '@/lib/tournament';
 
 interface Spiel {
   id: string;
@@ -11,16 +20,16 @@ interface Spiel {
   team1: string;
   team2: string;
   status: string;
+  ergebnis?: string | null;
   tore_team1?: number;
   tore_team2?: number;
 }
 
-// In-memory store for live game data (temporary solution)
-let liveGameStore: { [spielId: string]: { liveTime: string; status: string; lastUpdate: number } } = {};
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const db = getDatabase();
+    const settings = getAdminSettings();
+    const authResult = await verifyApiAuth(request);
     
     // Get all games for today
     const today = new Date().toISOString().split('T')[0];
@@ -31,50 +40,28 @@ export async function GET() {
       ORDER BY zeit, feld
     `).all(today) as Spiel[];
 
-    // Load field configurations from central API
-    let feldEinstellungen = [
-      { name: 'Feld 1', spielzeit: 10 },
-      { name: 'Feld 2', spielzeit: 12 },
-      { name: 'Feld 3', spielzeit: 15 },
-      { name: 'Feld 4', spielzeit: 8 },
-      { name: 'Beachfeld', spielzeit: 12 },
-    ];
+    const feldEinstellungen = getStoredFeldEinstellungen();
 
-    try {
-      const feldResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/feld-settings`);
-      if (feldResponse.ok) {
-        const feldData = await feldResponse.json();
-        if (feldData.success && feldData.feldEinstellungen) {
-          feldEinstellungen = feldData.feldEinstellungen.map((f: any) => ({
-            name: f.name,
-            spielzeit: f.spielzeit
-          }));
-        }
-      }
-    } catch (fetchError) {
-      console.warn('Could not load field settings, using defaults:', fetchError);
-    }
-
+    const scoresVisible = authResult.authenticated || areScoresPublicForDate(settings, today);
     const enhancedGames = allGames.map(spiel => {
       const feldInfo = feldEinstellungen.find(f => f.name === spiel.feld);
-      return {
-        ...spiel,
-        spielzeit: feldInfo?.spielzeit || 15
-      };
-    });
+      const fieldForGame = feldInfo ? resolveFeldEinstellungenForDate(feldInfo, spiel.datum) : null;
+      const visibleSpiel = scoresVisible ? spiel : { ...spiel, ergebnis: null, tore_team1: null, tore_team2: null };
 
-    // Clean up old live data (older than 5 minutes)
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    Object.keys(liveGameStore).forEach(spielId => {
-      if (liveGameStore[spielId].lastUpdate < fiveMinutesAgo) {
-        delete liveGameStore[spielId];
-      }
+      return {
+        ...visibleSpiel,
+        kategorie: formatScheduleCategoryLabel(spiel.kategorie),
+        spielzeit: fieldForGame?.spielzeit || 15,
+        pausenzeit: fieldForGame?.pausenzeit || 3,
+        halbzeitpause: fieldForGame?.halbzeitpause || 0,
+        zweiHalbzeiten: fieldForGame?.zweiHalbzeiten || false,
+      };
     });
 
     return NextResponse.json({
       success: true,
       spiele: enhancedGames,
-      liveStatus: liveGameStore
+      liveStatus: getStoredLiveTimers()
     });
 
   } catch (error) {
@@ -98,19 +85,40 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { spielId, status, tore_team1, tore_team2, liveTime } = await request.json();
+    const {
+      spielId,
+      status,
+      tore_team1,
+      tore_team2,
+      liveTime,
+      startTime,
+      elapsedTime,
+      isSecondHalf,
+      halbzeitStartTime,
+    } = await request.json();
     const db = getDatabase();
 
+    if (!spielId || !['geplant', 'laufend', 'halbzeit', 'beendet'].includes(status)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid game status request' },
+        { status: 400 }
+      );
+    }
+
     // Update live game store with current timer data
-    if (liveTime && status === 'laufend') {
-      liveGameStore[spielId] = {
+    if (status === 'laufend' || status === 'halbzeit') {
+      saveStoredLiveTimer(spielId, {
         liveTime,
         status,
-        lastUpdate: Date.now()
-      };
-    } else if (status === 'beendet') {
+        startTime,
+        elapsedTime,
+        isSecondHalf,
+        halbzeitStartTime,
+        lastUpdate: Date.now(),
+      });
+    } else if (status === 'beendet' || status === 'geplant') {
       // Remove from live store when game ends
-      delete liveGameStore[spielId];
+      deleteStoredLiveTimer(spielId);
     }
 
     // Update game status in spiele table
@@ -128,6 +136,8 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+
+      notifySpielplanChanged({ reason: 'live-status', spielId: String(spielId), status });
 
       return NextResponse.json({
         success: true,

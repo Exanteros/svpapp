@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getFeldJahrgangZuordnungen, saveFeldJahrgangZuordnung } from '@/lib/database';
+import { getFeldJahrgangZuordnungen, saveFeldJahrgangZuordnung } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
 
 export async function GET(request: NextRequest) {

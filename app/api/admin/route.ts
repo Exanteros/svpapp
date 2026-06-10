@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { 
   getStatistiken, 
   getAllAnmeldungen, 
+  updateAnmeldungInfo,
   updateAnmeldungStatus, 
   saveAdminSettings, 
   getAdminSettings, 
@@ -10,6 +11,34 @@ import {
   flushAnmeldungenDatabase
 } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+import { notifySpielplanChanged } from '@/lib/spielplan-events';
+
+const registrationStatuses = new Set(['angemeldet', 'bezahlt', 'storniert']);
+
+function normalizeRegistrationInfo(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const input = value as Record<string, unknown>;
+  const verein = String(input.verein || '').trim();
+  const kontakt = String(input.kontakt || '').trim();
+  const email = String(input.email || '').trim();
+  const mobil = String(input.mobil || '').trim();
+  const kosten = Number(input.kosten);
+
+  if (!verein || !kontakt || !email || !mobil || !Number.isFinite(kosten) || kosten < 0) {
+    return null;
+  }
+
+  return {
+    verein,
+    kontakt,
+    email,
+    mobil,
+    kosten: Math.round(kosten),
+  };
+}
 
 export async function GET(request: NextRequest) {
   // Verify authentication
@@ -64,6 +93,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === 'update_status') {
+      if (!registrationStatuses.has(body.status)) {
+        return NextResponse.json(
+          { error: 'Ungültiger Anmeldestatus' },
+          { status: 400 }
+        );
+      }
+
       const result = updateAnmeldungStatus(body.anmeldungId, body.status);
       
       if (result.changes === 0) {
@@ -79,9 +115,35 @@ export async function POST(request: NextRequest) {
         newStatus: body.status
       });
     }
+
+    if (body.action === 'update_anmeldung_info') {
+      const info = normalizeRegistrationInfo(body.anmeldung);
+
+      if (!body.anmeldungId || !info) {
+        return NextResponse.json(
+          { error: 'Ungültige Vereinsdaten' },
+          { status: 400 }
+        );
+      }
+
+      const result = updateAnmeldungInfo(body.anmeldungId, info);
+
+      if (result.changes === 0) {
+        return NextResponse.json(
+          { error: 'Anmeldung nicht gefunden' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        message: 'Vereinsdaten erfolgreich aktualisiert',
+        anmeldungId: body.anmeldungId,
+      });
+    }
     
     if (body.action === 'save_settings') {
       const result = saveAdminSettings(body.settings);
+      notifySpielplanChanged({ reason: 'settings' });
       
       return NextResponse.json({
         message: 'Einstellungen erfolgreich gespeichert',

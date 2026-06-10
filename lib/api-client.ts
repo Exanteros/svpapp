@@ -367,7 +367,8 @@ export const spielplanApi = {
         body: JSON.stringify({
           action: 'generate',
           settings,
-          feldEinstellungen
+          feldEinstellungen,
+          replaceExisting: true
         })
       });
       

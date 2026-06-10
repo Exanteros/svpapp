@@ -51,10 +51,40 @@ export async function verifyApiAuth(request: NextRequest) {
     };
   }
 
+  if (!isSameOriginMutation(request)) {
+    return {
+      authenticated: false,
+      error: 'Ungültige Anfrage-Herkunft',
+      status: 403
+    };
+  }
+
   return {
     authenticated: true,
     user
   };
+}
+
+function isSameOriginMutation(request: NextRequest) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) {
+    return true;
+  }
+
+  const origin = request.headers.get('origin');
+
+  if (!origin) {
+    return false;
+  }
+
+  const allowedOrigins = new Set([request.nextUrl.origin]);
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.replace(':', '');
+
+  if (forwardedHost) {
+    allowedOrigins.add(`${forwardedProto}://${forwardedHost}`);
+  }
+
+  return allowedOrigins.has(origin);
 }
 
 /**

@@ -23,8 +23,9 @@ http://localhost:3000/admin/login
 ```
 
 ### 3. Eingabeformat
-In das Anmeldefeld geben Sie ein:
-- `ihre-email@domain.de:IhrSicheresPasswort123!` (E-Mail:Passwort)
+In die Login-Seite geben Sie die Werte in die getrennten Felder ein:
+- E-Mail: `ihre-email@domain.de`
+- Passwort: `IhrSicheresPasswort123!`
 
 ### 4. Nach erfolgreichem Login
 - Automatische Weiterleitung zu `/admin`

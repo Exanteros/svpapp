@@ -8,10 +8,13 @@ import {
   generateHelferLink,
   updateHelferStatus,
   updateHelferBedarf,
+  deleteHelferAnmeldung,
   flushHelferDatabase,
   createHelferDemoData
 } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+
+const helferStatuses = new Set(['angemeldet', 'bestätigt', 'abgesagt']);
 
 export async function GET(request: NextRequest) {
   // Verify authentication
@@ -80,10 +83,36 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ helferLink });
         
       case 'update_status':
+        if (!helferStatuses.has(data.status)) {
+          return NextResponse.json(
+            { error: 'Ungültiger Helfer-Status' },
+            { status: 400 }
+          );
+        }
         updateHelferStatus(data.anmeldungId, data.status);
         return NextResponse.json({ success: true });
+
+      case 'delete_anmeldung':
+        if (!data.anmeldungId) {
+          return NextResponse.json(
+            { error: 'Keine Anmeldung-ID angegeben' },
+            { status: 400 }
+          );
+        }
+
+        const deleteAnmeldungResult = deleteHelferAnmeldung(data.anmeldungId);
+        return NextResponse.json({
+          success: true,
+          deleted: deleteAnmeldungResult.changes > 0
+        });
         
       case 'update_bedarf':
+        if (!data.id || !data.bedarf) {
+          return NextResponse.json(
+            { error: 'Bedarf-ID und Bedarf-Daten sind erforderlich' },
+            { status: 400 }
+          );
+        }
         const updateResult = updateHelferBedarf(data.id, data.bedarf);
         return NextResponse.json({ success: true, ...updateResult });
         

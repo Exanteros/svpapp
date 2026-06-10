@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getAdminSettings } from '@/lib/db';
+import { resolveTournamentScheduleSettings } from '@/lib/tournament';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     const settings = getAdminSettings();
+    const scheduleSettings = resolveTournamentScheduleSettings(settings);
     
     // Nur die für die Öffentlichkeit relevanten Daten zurückgeben
     const publicSettings = {
-      turnierStartDatum: settings.turnierStartDatum || '2025-07-05',
-      turnierEndDatum: settings.turnierEndDatum || '2025-07-06',
-      samstagStartzeit: settings.samstagStartzeit || '13:00',
-      samstagEndzeit: settings.samstagEndzeit || '17:00',
-      sonntagStartzeit: settings.sonntagStartzeit || '10:00',
-      sonntagEndzeit: settings.sonntagEndzeit || '17:00'
+      turnierStartDatum: scheduleSettings.turnierStartDatum,
+      turnierEndDatum: scheduleSettings.turnierEndDatum,
+      samstagStartzeit: scheduleSettings.samstagStartzeit,
+      samstagEndzeit: scheduleSettings.samstagEndzeit,
+      sonntagStartzeit: scheduleSettings.sonntagStartzeit,
+      sonntagEndzeit: scheduleSettings.sonntagEndzeit,
+      anmeldungAktiv: settings.anmeldungAktiv !== false
     };
     
     return NextResponse.json(publicSettings);

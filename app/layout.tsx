@@ -1,20 +1,18 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { AppShell } from "@/components/app-shell";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import { buildRootMetadata, buildStructuredData } from "@/lib/seo";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+export function generateMetadata(): Metadata {
+  return buildRootMetadata();
+}
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "SV Puschendorf Rasenturnier",
-  description: "Turnierverwaltung für das Rasenturnier des SV Puschendorf 2025",
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#5e6d35",
 };
 
 export default function RootLayout({
@@ -22,18 +20,40 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const structuredData = buildStructuredData();
+
   return (
     <html lang="de">
       <head>
+        <script
+          type="application/ld+json"
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/ipad-portrait.svg"
+          media="screen and (device-width: 768px) and (device-height: 1024px) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/ipad-landscape.svg"
+          media="screen and (device-width: 1024px) and (device-height: 768px) and (orientation: landscape)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/ipad-portrait.svg"
+          media="screen and (min-device-width: 810px) and (max-device-width: 834px) and (orientation: portrait)"
+        />
+        <link
+          rel="apple-touch-startup-image"
+          href="/splash/ipad-landscape.svg"
+          media="screen and (min-device-width: 1080px) and (max-device-width: 1194px) and (orientation: landscape)"
+        />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-        {/* DEV-Hack: API-Schlüssel automatisch setzen im Entwicklungsmodus */}
-        {process.env.NODE_ENV === 'development' && (
-          <script src="/dev-api-hack.js" async></script>
-        )}
+      <body className="min-h-screen bg-background font-sans antialiased">
+        <AppShell>{children}</AppShell>
+        <PWAInstallPrompt />
       </body>
     </html>
   );

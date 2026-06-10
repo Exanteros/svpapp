@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
+import { notifySpielplanChanged } from '@/lib/spielplan-events';
+import { createRefereeCardToken } from '@/lib/referee-card-token';
 
 export async function POST(request: NextRequest) {
   // Verify authentication
@@ -14,10 +16,49 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { action, spielId, ergebnis, qrData, aiData } = await request.json();
+    const { action, spielId, spielIds, ergebnis, qrData, aiData } = await request.json();
     const db = getDatabase();
 
     switch (action) {
+      case 'create_score_codes':
+      case 'create_score_links': {
+        const requestedIds = Array.isArray(spielIds)
+          ? spielIds.map((id) => String(id)).filter(Boolean)
+          : [];
+        const rows = requestedIds.length > 0
+          ? requestedIds
+              .map((id) => db.prepare('SELECT id FROM spiele WHERE id = ?').get(id) as { id: string | number } | undefined)
+              .filter((row): row is { id: string | number } => Boolean(row))
+          : db.prepare('SELECT id FROM spiele ORDER BY datum, zeit, feld').all() as Array<{ id: string | number }>;
+
+        const codes = rows.map((row) => {
+          const rowSpielId = String(row.id);
+          const token = createRefereeCardToken(rowSpielId);
+
+          return {
+            spielId: rowSpielId,
+            code: `SVP-SCORE:${token}`,
+            token,
+          };
+        });
+
+        if (action === 'create_score_links') {
+          return NextResponse.json({
+            success: true,
+            codes,
+            links: codes.map((code) => ({
+              spielId: code.spielId,
+              url: `${request.nextUrl.origin}/schiedsrichterkarte/${code.token}`,
+            })),
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          codes,
+        });
+      }
+
       case 'save_result_from_qr':
       case 'save_result_from_ai_scan':
         // Ergebnis aus gescannter Schiedsrichterkarte speichern (QR oder AI)
@@ -80,6 +121,12 @@ export async function POST(request: NextRequest) {
               console.warn('⚠️ AI-Training fehlgeschlagen:', trainError);
             }
           }
+
+          notifySpielplanChanged({
+            reason: action === 'save_result_from_ai_scan' ? 'ai-result' : 'qr-result',
+            spielId: String(spielId),
+            status: 'beendet',
+          });
           
           return NextResponse.json({
             success: true,
@@ -110,6 +157,12 @@ export async function POST(request: NextRequest) {
           }
 
           console.log(`✅ Ergebnis (Fallback) aus QR-Code gespeichert: Spiel ${spielId} = ${ergebnis}`);
+
+          notifySpielplanChanged({
+            reason: action === 'save_result_from_ai_scan' ? 'ai-result' : 'qr-result',
+            spielId: String(spielId),
+            status: 'beendet',
+          });
           
           return NextResponse.json({
             success: true,

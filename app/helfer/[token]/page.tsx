@@ -8,11 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Shield, 
-  Heart, 
-  Users, 
-  CheckCircle, 
+import {
+  Shield,
+  Heart,
+  Users,
+  CheckCircle,
   Clock,
   ArrowLeft,
   Send
@@ -74,7 +74,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
       const timeoutId = setTimeout(() => {
         loadHelferBedarf();
       }, 100);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [token]);
@@ -84,7 +84,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
       setLoading(true);
       setError(null); // Clear any previous errors
       const response = await fetch(`/api/helfer/public/${token}`);
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           setError('Ungültiger oder abgelaufener Link');
@@ -93,10 +93,10 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
         }
         return;
       }
-      
+
       const data = await response.json();
       setHelferBedarf(data.bedarf || []);
-      
+
       // Lade alle Anmeldungen für alle Bedarfe
       await loadAlleAnmeldungen(data.bedarf || []);
     } catch (error) {
@@ -120,12 +120,12 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
         }
         return { bedarfId: bedarf.id, anmeldungen: [] };
       });
-      
+
       const alleAnmeldungenData = await Promise.all(anmeldungenPromises);
       const flattened = alleAnmeldungenData.reduce((acc: any[], curr) => {
         return [...acc, ...curr.anmeldungen.map((anm: any) => ({ ...anm, bedarfId: curr.bedarfId }))];
       }, []);
-      
+
       setAlleAnmeldungen(flattened);
     } catch (error) {
       console.error('Fehler beim Laden aller Anmeldungen:', error);
@@ -141,7 +141,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
     try {
       setSubmitting(true);
       setError(null);
-      
+
       const response = await fetch(`/api/helfer/public/${token}`, {
         method: 'POST',
         headers: {
@@ -149,11 +149,11 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
         },
         body: JSON.stringify(anmeldung),
       });
-      
+
       if (!response.ok) {
         throw new Error('Fehler bei der Anmeldung');
       }
-      
+
       setShowSuccess(true);
       setAnmeldung({
         name: '',
@@ -218,10 +218,10 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
     try {
       const date = new Date(`${dateString}T12:00:00`);
       const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' });
-      const formattedDate = date.toLocaleDateString('de-DE', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric' 
+      const formattedDate = date.toLocaleDateString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
       });
       return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)} ${formattedDate}`;
     } catch (error) {
@@ -243,7 +243,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
   const getCategoryColor = (kategorie: string) => {
     switch (kategorie) {
       case 'getraenke': return 'bg-blue-100 text-blue-600 border-blue-200';
-      case 'kaffee_kuchen': return 'bg-orange-100 text-orange-600 border-orange-200';
+      case 'kaffee_kuchen': return 'bg-secondary text-secondary-foreground border-border';
       case 'grill': return 'bg-red-100 text-red-600 border-red-200';
       case 'waffeln_suess': return 'bg-yellow-100 text-yellow-600 border-yellow-200';
       case 'aufbau': return 'bg-green-100 text-green-600 border-green-200';
@@ -252,7 +252,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
   };
 
   const getAngemeldeteHelferForBedarf = (bedarfId: string) => {
-    return alleAnmeldungen.filter(anmeldung => 
+    return alleAnmeldungen.filter(anmeldung =>
       anmeldung.helferBedarfId === bedarfId || anmeldung.bedarfId === bedarfId
     );
   };
@@ -261,11 +261,11 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="p-6 bg-white rounded-xl shadow-lg mb-6 border border-gray-200">
+          <div className="p-6 bg-card rounded-lg shadow-xs mb-6 border border-gray-200">
             <div className="relative w-8 h-8 mx-auto">
-              <div className="w-8 h-8 bg-orange-500 rounded-full animate-pulse"></div>
+              <div className="w-8 h-8 bg-primary rounded-full animate-pulse"></div>
               <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full"></div>
-              <div className="absolute top-2 left-2 w-4 h-4 bg-orange-500 rounded-full"></div>
+              <div className="absolute top-2 left-2 w-4 h-4 bg-primary rounded-full"></div>
             </div>
           </div>
           <p className="text-lg text-gray-700 mb-2 font-medium">Helfer-Positionen werden geladen...</p>
@@ -279,7 +279,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center max-w-md mx-auto w-full">
-          <div className="p-4 sm:p-6 bg-white rounded-xl shadow-lg mb-4 sm:mb-6 border border-gray-200">
+          <div className="p-4 sm:p-6 bg-card rounded-lg shadow-xs mb-4 sm:mb-6 border border-gray-200">
             <div className="relative w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-500 rounded-full flex items-center justify-center">
                 <div className="w-5 h-5 sm:w-6 sm:h-6 bg-white rounded-full"></div>
@@ -288,8 +288,8 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
             <h1 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">Fehler</h1>
             <p className="text-sm sm:text-base text-gray-600">{error}</p>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => {
               setError(null);
               loadHelferBedarf();
@@ -308,19 +308,19 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center max-w-md mx-auto w-full">
-          <div className="p-6 sm:p-8 bg-white rounded-xl shadow-lg mb-4 sm:mb-6 border border-gray-200">
+          <div className="p-6 sm:p-8 bg-card rounded-lg shadow-xs mb-4 sm:mb-6 border border-gray-200">
             <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-green-500 mb-4 sm:mb-6" />
             <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 sm:mb-4">Vielen Dank!</h1>
             <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-              Ihre Helfer-Anmeldung wurde erfolgreich übermittelt. 
+              Ihre Helfer-Anmeldung wurde erfolgreich übermittelt.
               Sie erhalten in Kürze eine Bestätigung per E-Mail.
             </p>
-            <div className="flex items-center justify-center gap-2 text-orange-600 mb-4 sm:mb-6">
+            <div className="flex items-center justify-center gap-2 text-primary mb-4 sm:mb-6">
               <Heart className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="text-xs sm:text-sm font-medium">Wir freuen uns auf Ihre Unterstützung!</span>
             </div>
           </div>
-          <Button 
+          <Button
             onClick={() => {
               setShowSuccess(false);
               setAnmeldung({
@@ -332,7 +332,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                 kuchenspende: ''
               });
             }}
-            className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white text-base px-6 py-2"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white text-base px-6 py-2"
           >
             Weitere Anmeldung
           </Button>
@@ -344,19 +344,19 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+      <header className="bg-background border-b sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-3 sm:mb-4">
               <div className="relative w-6 h-6 sm:w-8 sm:h-8">
-                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-orange-500 rounded-full"></div>
+                <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary rounded-full"></div>
                 <div className="absolute top-0.5 left-0.5 sm:top-1 sm:left-1 w-5 h-5 sm:w-6 sm:h-6 bg-white rounded-full"></div>
-                <div className="absolute top-1 left-1 sm:top-2 sm:left-2 w-4 h-4 sm:w-4 sm:h-4 bg-orange-500 rounded-full"></div>
+                <div className="absolute top-1 left-1 sm:top-2 sm:left-2 w-4 h-4 sm:w-4 sm:h-4 bg-primary rounded-full"></div>
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Helfer-Anmeldung</h1>
             </div>
             <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto px-2">
-              Unterstützen Sie unser Rasenturnier als freiwilliger Helfer! 
+              Unterstützen Sie unser Rasenturnier als freiwilliger Helfer!
               Wählen Sie eine Position aus und melden Sie sich an.
             </p>
           </div>
@@ -382,7 +382,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
             <Card className="bg-white border-gray-200 shadow-sm">
               <CardHeader className="pb-4 sm:pb-6 border-b border-gray-100">
                 <CardTitle className="text-lg sm:text-xl text-gray-800 flex items-center gap-2">
-                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500" />
+                  <Users className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   Helfer-Zeitplan
                 </CardTitle>
                 <CardDescription className="text-sm sm:text-base text-gray-600">
@@ -409,12 +409,12 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                               onClick={() => handleBedarfClick(bedarf)}
                               className={`
                                 p-3 rounded-lg cursor-pointer border-l-4 shadow-sm transition-all duration-200
-                                ${anmeldung.helferBedarfId === bedarf.id 
-                                  ? 'ring-2 ring-orange-400 bg-orange-50 border-orange-400' 
+                                ${anmeldung.helferBedarfId === bedarf.id
+                                  ? 'ring-2 ring-ring bg-muted/40 border-ring'
                                   : 'hover:shadow-md border-l-4'
                                 }
                                 ${bedarf.kategorie === 'getraenke' ? 'bg-blue-50 border-blue-400 text-blue-800 hover:bg-blue-100' :
-                                  bedarf.kategorie === 'kaffee_kuchen' ? 'bg-orange-50 border-orange-400 text-orange-800 hover:bg-orange-100' :
+                                  bedarf.kategorie === 'kaffee_kuchen' ? 'bg-muted/40 border-ring text-accent-foreground hover:bg-accent/80' :
                                   bedarf.kategorie === 'grill' ? 'bg-red-50 border-red-400 text-red-800 hover:bg-red-100' :
                                   bedarf.kategorie === 'waffeln_suess' ? 'bg-yellow-50 border-yellow-400 text-yellow-800 hover:bg-yellow-100' :
                                   bedarf.kategorie === 'aufbau' ? 'bg-green-50 border-green-400 text-green-800 hover:bg-green-100' :
@@ -424,11 +424,11 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                               <div className="flex items-start justify-between mb-2">
                                 <div className="flex items-center gap-2">
                                   <span className="text-lg">
-                                    {bedarf.kategorie === 'getraenke' && '🥤'} 
-                                    {bedarf.kategorie === 'kaffee_kuchen' && '☕'} 
-                                    {bedarf.kategorie === 'grill' && '🍖'} 
-                                    {bedarf.kategorie === 'waffeln_suess' && '🧇'} 
-                                    {bedarf.kategorie === 'aufbau' && '🔧'} 
+                                    {bedarf.kategorie === 'getraenke' && '🥤'}
+                                    {bedarf.kategorie === 'kaffee_kuchen' && '☕'}
+                                    {bedarf.kategorie === 'grill' && '🍖'}
+                                    {bedarf.kategorie === 'waffeln_suess' && '🧇'}
+                                    {bedarf.kategorie === 'aufbau' && '🔧'}
                                     {bedarf.kategorie === 'sonstiges' && '📋'}
                                   </span>
                                   <span className="font-semibold text-sm">{bedarf.titel}</span>
@@ -437,9 +437,9 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                   {bedarf.kategorie}
                                 </Badge>
                               </div>
-                              
+
                               <p className="text-xs opacity-75 mb-2">{bedarf.beschreibung}</p>
-                              
+
                               <div className="flex items-center justify-between text-xs mb-2">
                                 <span className="flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
@@ -450,7 +450,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                   {bedarf.anzahlBenötigt} benötigt
                                 </span>
                               </div>
-                              
+
                               {/* Angemeldete Helfer anzeigen */}
                               {getAngemeldeteHelferForBedarf(bedarf.id).length > 0 && (
                                 <div className="pt-2 border-t border-opacity-20 border-current">
@@ -462,7 +462,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                       .map(helper => helper.name.split(' ').pop())
                                       .slice(0, 2)
                                       .join(', ')}
-                                    {getAngemeldeteHelferForBedarf(bedarf.id).length > 2 && 
+                                    {getAngemeldeteHelferForBedarf(bedarf.id).length > 2 &&
                                       ` und ${getAngemeldeteHelferForBedarf(bedarf.id).length - 2} weitere`
                                     }
                                   </div>
@@ -498,13 +498,13 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                             {zeitslot}
                           </td>
                           {[...new Set(helferBedarf.map(b => b.datum))].sort().map(datum => (
-                            <td 
-                              key={`${datum}-${zeitslot}`} 
+                            <td
+                              key={`${datum}-${zeitslot}`}
                               className="border border-gray-300 p-2 min-h-[80px] relative"
                             >
                               {helferBedarf
-                                .filter(bedarf => 
-                                  bedarf.datum === datum && 
+                                .filter(bedarf =>
+                                  bedarf.datum === datum &&
                                   bedarf.aktiv &&
                                   isTimeInPublicRange(zeitslot, bedarf.startzeit, bedarf.endzeit)
                                 )
@@ -514,12 +514,12 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                     onClick={() => handleBedarfClick(bedarf)}
                                     className={`
                                       mb-1 p-3 rounded-lg cursor-pointer border-l-4 shadow-sm transition-all duration-200
-                                      ${anmeldung.helferBedarfId === bedarf.id 
-                                        ? 'ring-2 ring-orange-400 bg-orange-50 border-orange-400' 
+                                      ${anmeldung.helferBedarfId === bedarf.id
+                                        ? 'ring-2 ring-ring bg-muted/40 border-ring'
                                         : 'hover:shadow-md border-l-4'
                                       }
                                       ${bedarf.kategorie === 'getraenke' ? 'bg-blue-50 border-blue-400 text-blue-800 hover:bg-blue-100' :
-                                        bedarf.kategorie === 'kaffee_kuchen' ? 'bg-orange-50 border-orange-400 text-orange-800 hover:bg-orange-100' :
+                                        bedarf.kategorie === 'kaffee_kuchen' ? 'bg-muted/40 border-ring text-accent-foreground hover:bg-accent/80' :
                                         bedarf.kategorie === 'grill' ? 'bg-red-50 border-red-400 text-red-800 hover:bg-red-100' :
                                         bedarf.kategorie === 'waffeln_suess' ? 'bg-yellow-50 border-yellow-400 text-yellow-800 hover:bg-yellow-100' :
                                         bedarf.kategorie === 'aufbau' ? 'bg-green-50 border-green-400 text-green-800 hover:bg-green-100' :
@@ -528,16 +528,16 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                   >
                                     <div className="flex items-center justify-between mb-2">
                                       <span className="font-semibold text-sm">
-                                        {bedarf.kategorie === 'getraenke' && '🥤'} 
-                                        {bedarf.kategorie === 'kaffee_kuchen' && '☕'} 
-                                        {bedarf.kategorie === 'grill' && '🍖'} 
-                                        {bedarf.kategorie === 'waffeln_suess' && '🧇'} 
-                                        {bedarf.kategorie === 'aufbau' && '🔧'} 
-                                        {bedarf.kategorie === 'sonstiges' && '📋'} 
+                                        {bedarf.kategorie === 'getraenke' && '🥤'}
+                                        {bedarf.kategorie === 'kaffee_kuchen' && '☕'}
+                                        {bedarf.kategorie === 'grill' && '🍖'}
+                                        {bedarf.kategorie === 'waffeln_suess' && '🧇'}
+                                        {bedarf.kategorie === 'aufbau' && '🔧'}
+                                        {bedarf.kategorie === 'sonstiges' && '📋'}
                                         {bedarf.titel}
                                       </span>
-                                      <Badge 
-                                        variant="outline" 
+                                      <Badge
+                                        variant="outline"
                                         className="text-xs"
                                       >
                                         {bedarf.kategorie}
@@ -565,7 +565,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                             .map(helper => helper.name.split(' ').pop()) // Nur Nachname
                                             .slice(0, 3) // Maximal 3 Namen anzeigen
                                             .join(', ')}
-                                          {getAngemeldeteHelferForBedarf(bedarf.id).length > 3 && 
+                                          {getAngemeldeteHelferForBedarf(bedarf.id).length > 3 &&
                                             ` und ${getAngemeldeteHelferForBedarf(bedarf.id).length - 3} weitere`
                                           }
                                         </div>
@@ -581,7 +581,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                     </tbody>
                   </table>
                 </div>
-                
+
                 {/* Legende */}
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                   <h4 className="font-medium text-gray-800 mb-3">Kategorien:</h4>
@@ -623,7 +623,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                     <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                       <div className={`p-1.5 sm:p-2 rounded-lg flex-shrink-0 ${
                         selectedBedarf.kategorie === 'getraenke' ? 'bg-blue-100 text-blue-600' :
-                        selectedBedarf.kategorie === 'kaffee_kuchen' ? 'bg-orange-100 text-orange-600' :
+                        selectedBedarf.kategorie === 'kaffee_kuchen' ? 'bg-secondary text-secondary-foreground' :
                         selectedBedarf.kategorie === 'grill' ? 'bg-red-100 text-red-600' :
                         selectedBedarf.kategorie === 'waffeln_suess' ? 'bg-yellow-100 text-yellow-600' :
                         selectedBedarf.kategorie === 'aufbau' ? 'bg-green-100 text-green-600' :
@@ -645,8 +645,8 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                         </CardDescription>
                       </div>
                     </div>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => setShowAnmeldungen(false)}
                       size="sm"
                       className="flex-shrink-0 h-8 w-8 p-0"
@@ -665,7 +665,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                             {bedarfAnmeldungen.length} von {selectedBedarf.anzahlBenötigt} Plätzen belegt
                           </p>
                           <p className="text-xs sm:text-sm text-slate-600">
-                            {selectedBedarf.anzahlBenötigt - bedarfAnmeldungen.length > 0 
+                            {selectedBedarf.anzahlBenötigt - bedarfAnmeldungen.length > 0
                               ? `Noch ${selectedBedarf.anzahlBenötigt - bedarfAnmeldungen.length} Helfer benötigt`
                               : 'Alle Plätze sind belegt'
                             }
@@ -722,12 +722,12 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                                 <p className="text-xs sm:text-sm text-slate-500 italic">"{anmeldung.bemerkung}"</p>
                               )}
                             </div>
-                            <Badge 
+                            <Badge
                               variant={anmeldung.status === 'bestätigt' ? 'default' : 'secondary'}
                               className={`
                                 text-xs flex-shrink-0
-                                ${anmeldung.status === 'bestätigt' 
-                                  ? 'bg-emerald-100 text-emerald-700' 
+                                ${anmeldung.status === 'bestätigt'
+                                  ? 'bg-emerald-100 text-emerald-700'
                                   : anmeldung.status === 'abgesagt'
                                   ? 'bg-red-100 text-red-700'
                                   : 'bg-blue-100 text-blue-700'
@@ -751,7 +751,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
             <Card className="bg-white border-gray-200 shadow-sm">
               <CardHeader className="pb-4 sm:pb-6 border-b border-gray-100">
                 <CardTitle className="text-lg sm:text-xl text-gray-800 flex items-center gap-2">
-                  <Send className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500" />
+                  <Send className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                   Anmeldung
                 </CardTitle>
                 <CardDescription className="text-sm sm:text-base text-gray-600">
@@ -775,7 +775,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                       value={anmeldung.name}
                       onChange={(e) => setAnmeldung(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Ihr vollständiger Name"
-                      className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-orange-400 focus:ring-orange-400/20 text-base"
+                      className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-ring focus:ring-ring/20 text-base"
                       required
                     />
                   </div>
@@ -790,7 +790,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                       value={anmeldung.email}
                       onChange={(e) => setAnmeldung(prev => ({ ...prev, email: e.target.value }))}
                       placeholder="ihre.email@domain.de"
-                      className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-orange-400 focus:ring-orange-400/20 text-base"
+                      className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-ring focus:ring-ring/20 text-base"
                       required
                     />
                   </div>
@@ -806,7 +806,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                     value={anmeldung.telefon}
                     onChange={(e) => setAnmeldung(prev => ({ ...prev, telefon: e.target.value }))}
                     placeholder="Ihre Telefonnummer"
-                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-orange-400 focus:ring-orange-400/20 text-base"
+                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-ring focus:ring-ring/20 text-base"
                   />
                 </div>
 
@@ -819,7 +819,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                     value={anmeldung.kuchenspende || ''}
                     onChange={(e) => setAnmeldung(prev => ({ ...prev, kuchenspende: e.target.value }))}
                     placeholder="z.B. Apfelkuchen, Streuselkuchen, Muffins..."
-                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-orange-400 focus:ring-orange-400/20 text-base"
+                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-ring focus:ring-ring/20 text-base"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Falls Sie einen Kuchen mitbringen möchten, geben Sie hier an, welchen Kuchen Sie mitbringen.
@@ -835,7 +835,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                     value={anmeldung.bemerkung}
                     onChange={(e) => setAnmeldung(prev => ({ ...prev, bemerkung: e.target.value }))}
                     placeholder="Besondere Hinweise oder Fragen..."
-                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-orange-400 focus:ring-orange-400/20 text-base"
+                    className="mt-1 bg-white border-gray-300 text-gray-700 focus:border-ring focus:ring-ring/20 text-base"
                     rows={3}
                   />
                 </div>
@@ -844,7 +844,7 @@ export default function HelferAnmeldungPage({ params }: { params: Promise<{ toke
                   <Button
                     onClick={submitAnmeldung}
                     disabled={submitting || !anmeldung.name || !anmeldung.email || !anmeldung.helferBedarfId}
-                    className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-medium px-6 sm:px-8 py-2 sm:py-2 transition-all duration-200 text-base"
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-medium px-6 sm:px-8 py-2 sm:py-2 transition-all duration-200 text-base"
                   >
                     {submitting ? (
                       <span className="flex items-center justify-center gap-2">

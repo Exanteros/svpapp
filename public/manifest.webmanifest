@@ -1,0 +1,59 @@
+{
+  "name": "SV Puschendorf Rasenturnier",
+  "short_name": "SVP Turnier",
+  "description": "Turnierverwaltung für Spielplan, Ergebnisse, Anmeldung und Admin am Turniertag.",
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "lang": "de-DE",
+  "dir": "ltr",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "background_color": "#f6f7f1",
+  "theme_color": "#5e6d35",
+  "categories": ["sports", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Spielplan",
+      "short_name": "Spielplan",
+      "description": "Aktuellen Turnier-Spielplan öffnen",
+      "url": "/spielplan?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Ergebnisse",
+      "short_name": "Ergebnisse",
+      "description": "Öffentliche Ergebnisse öffnen",
+      "url": "/ergebnisse?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Admin",
+      "short_name": "Admin",
+      "description": "Turnier-Verwaltung öffnen",
+      "url": "/admin?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

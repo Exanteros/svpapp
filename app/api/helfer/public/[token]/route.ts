@@ -3,7 +3,7 @@ import {
   validateHelferToken,
   getActiveHelferBedarf,
   createHelferAnmeldung,
-  getHelferAnmeldungenForBedarf
+  getPublicHelferAnmeldungenForBedarf
 } from '@/lib/db';
 
 export async function GET(
@@ -27,7 +27,7 @@ export async function GET(
 
     // Wenn eine spezifische BedarfId angefragt wird, lade die Anmeldungen
     if (bedarfId) {
-      const anmeldungen = getHelferAnmeldungenForBedarf(bedarfId);
+      const anmeldungen = getPublicHelferAnmeldungenForBedarf(bedarfId);
       return NextResponse.json({
         anmeldungen
       });

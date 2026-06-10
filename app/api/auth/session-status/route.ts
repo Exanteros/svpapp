@@ -1,46 +1,25 @@
-import { NextRequest } from 'next/server';
-import { createAuthResponse, createErrorResponse } from '@/lib/auth';
-import fs from 'fs';
-import path from 'path';
+import { NextRequest, NextResponse } from 'next/server';
+
+import { verifyApiAuth } from '@/lib/dal';
 
 export async function GET(request: NextRequest) {
-  const sessionToken = request.headers.get('x-session-token');
-  
-  // Versuche, die Sessions-Datei zu lesen
-  let sessionFileContent = 'Keine Sessions-Datei gefunden';
-  const sessionsPath = path.join(process.cwd(), 'sessions.json');
-  
-  try {
-    if (fs.existsSync(sessionsPath)) {
-      sessionFileContent = fs.readFileSync(sessionsPath, 'utf8');
-    }
-  } catch (err: any) {
-    sessionFileContent = `Fehler beim Lesen der Sessions-Datei: ${err.message || 'Unbekannter Fehler'}`;
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
   }
-  
-  // Importiere die Funktionen für die Session-Validierung
-  const { verifyAdminSession, verifySessionToken } = await import('@/lib/auth');
-  
-  // Sessions sind jetzt immer gültig, da Authentifizierung deaktiviert wurde
-  let sessionValid = true;
-  let sessionInfo = { valid: true, email: 'öffentlicher-zugriff@svp-app.de' };
-  
-  if (sessionToken) {
-    // Versuche trotzdem, die Session zu validieren für Debug-Zwecke
-    const realSessionValid = verifyAdminSession(sessionToken);
-    const realSessionInfo = verifySessionToken(sessionToken);
+
+  const authResult = await verifyApiAuth(request);
+
+  if (!authResult.authenticated) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: authResult.status }
+    );
   }
-  
-  return createAuthResponse({
-    sessionToken: sessionToken ? `${sessionToken.substring(0, 8)}...` : 'nicht vorhanden',
-    apiKeyAuth: 'deaktiviert (öffentlicher Zugriff)',
-    sessionValid,
-    sessionInfo,
-    sessionFile: {
-      path: sessionsPath,
-      content: sessionFileContent
-    },
+
+  return NextResponse.json({
+    authenticated: true,
+    user: authResult.user,
     serverTime: new Date().toISOString(),
-    nodeEnv: process.env.NODE_ENV
+    nodeEnv: process.env.NODE_ENV,
   });
 }

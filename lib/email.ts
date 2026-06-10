@@ -26,8 +26,6 @@ export interface EmailData {
 }
 
 export async function sendConfirmationEmail(data: EmailData) {
-  const uniqueEmail = `svp.rasenturnier.${data.verein.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')}@sv-puschendorf.de`;
-  
   const teamsList = data.teams.map(team => 
     `• ${team.kategorie}: ${team.anzahl} Team${team.anzahl > 1 ? 's' : ''} ${team.schiri ? '(mit Schiri)' : '(ohne Schiri, +20€)'} ${team.spielstaerke ? `- ${team.spielstaerke}` : ''}`
   ).join('\n');
@@ -61,14 +59,6 @@ export async function sendConfirmationEmail(data: EmailData) {
             <p style="margin: 0; color: #1e40af;">
               Bitte überweisen Sie das Startgeld auf das Vereinskonto des SV Puschendorf:<br>
               <strong>Verwendungszweck:</strong> "Rasenturnier 2025, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
-            </p>
-          </div>
-          
-          <div style="background: #f0f9ff; padding: 20px; border-radius: 6px; margin: 20px 0;">
-            <h3 style="color: #0369a1; margin-top: 0;">📧 Ihre eindeutige E-Mail-Adresse</h3>
-            <p style="margin: 0; color: #0369a1;">
-              Für alle weiteren Fragen und Änderungen verwenden Sie bitte diese E-Mail-Adresse:<br>
-              <strong style="background: white; padding: 5px 10px; border-radius: 4px; font-family: monospace;">${uniqueEmail}</strong>
             </p>
           </div>
           
@@ -113,9 +103,6 @@ ZAHLUNGSHINWEISE:
 Bitte überweisen Sie das Startgeld auf das Vereinskonto des SV Puschendorf:
 Verwendungszweck: "Rasenturnier 2025, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
 
-IHRE EINDEUTIGE E-MAIL-ADRESSE:
-Für alle weiteren Fragen verwenden Sie bitte: ${uniqueEmail}
-
 TURNIER-TERMINE:
 Samstag, 5. Juli 2025: 13:00 - 17:00 Uhr (Mini + E-Jugend)
 Sonntag, 6. Juli 2025: 10:00 - 17:00 Uhr (D, C, B, A-Jugend)
@@ -141,15 +128,13 @@ Das Team des SV Puschendorf
     return {
       success: true,
       messageId: info.messageId,
-      uniqueEmail,
       previewUrl: nodemailer.getTestMessageUrl(info)
     };
   } catch (error) {
     console.error('❌ E-Mail-Versand fehlgeschlagen:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unbekannter Fehler',
-      uniqueEmail
+      error: error instanceof Error ? error.message : 'Unbekannter Fehler'
     };
   }
 }
@@ -176,8 +161,6 @@ Teams:
 ${teamsList}
 
 Gesamtkosten: ${data.kosten}€
-
-Eindeutige E-Mail: svp.rasenturnier.${data.verein.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')}@sv-puschendorf.de
       `,
       html: `
         <h2>🆕 Neue Turnier-Anmeldung</h2>
@@ -188,7 +171,6 @@ Eindeutige E-Mail: svp.rasenturnier.${data.verein.toLowerCase().replace(/\s+/g, 
         <p><strong>Teams:</strong></p>
         <pre>${teamsList}</pre>
         <p><strong>Gesamtkosten:</strong> ${data.kosten}€</p>
-        <p><strong>Eindeutige E-Mail:</strong> svp.rasenturnier.${data.verein.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')}@sv-puschendorf.de</p>
       `
     });
 

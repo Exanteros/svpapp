@@ -1,14 +1,26 @@
-'use client';
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  Filter,
+  MapPin,
+  Pause,
+  Play,
+  RefreshCw,
+  Trophy,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSpielplanLiveEvents } from "@/components/SpielplanLiveRefresh";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Calendar, Clock, MapPin, Trophy, CheckCircle, Pause, AlertTriangle, RefreshCw, Play } from "lucide-react";
-import Link from "next/link";
-import { useState, useEffect } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatScheduleCategoryLabel } from "@/lib/tournament";
+import { cn } from "@/lib/utils";
 
 interface Spiel {
   id: string;
@@ -19,406 +31,459 @@ interface Spiel {
   team1: string;
   team2: string;
   status: string;
-  ergebnis?: string;
-  tore_team1?: number;
-  tore_team2?: number;
+  ergebnis?: string | null;
+  tore_team1?: number | null;
+  tore_team2?: number | null;
+}
+
+interface SpielplanDay {
+  datum: string;
+  zeit: string;
+  spiele: Spiel[];
 }
 
 interface SpielplanData {
-  samstag: { datum: string; zeit: string; spiele: Spiel[] };
-  sonntag: { datum: string; zeit: string; spiele: Spiel[] };
+  samstag: SpielplanDay;
+  sonntag: SpielplanDay;
   availableFields: string[];
+  spielplanStatus?: string;
+  spielplanPublishedAt?: string;
 }
 
-async function getSpielplan(): Promise<SpielplanData> {
-  try {
-    const response = await fetch('/api/spielplan/get', {
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch spielplan: ${response.status}`);
+type DayKey = "samstag" | "sonntag";
+type GameVisualStatus = "geplant" | "nächstes" | "laufend" | "halbzeit" | "beendet";
+
+const dayLabels: Record<DayKey, string> = {
+  samstag: "Tag 1",
+  sonntag: "Tag 2",
+};
+
+async function getSpielplan(includeDraft = false): Promise<SpielplanData> {
+  const response = await fetch(`/api/spielplan/get${includeDraft ? "?includeDraft=1" : ""}`, {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-cache" },
+  });
+
+  if (!response.ok) {
+    if (includeDraft && [401, 403].includes(response.status)) {
+      throw new Error("Entwurfsvorschau ist nur für angemeldete Admins verfügbar.");
     }
-    
-    const data = await response.json();
-    
-    if (!data || !data.samstag || !data.sonntag) {
-      throw new Error('Invalid spielplan data structure');
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Error fetching spielplan:', error);
-    throw error;
+
+    throw new Error(`Spielplan konnte nicht geladen werden (${response.status}).`);
   }
-}
 
-function getGameStatus(spiel: Spiel): 'geplant' | 'laufend' | 'halbzeit' | 'abgeschlossen' {
-  const now = new Date();
-  const spielZeit = new Date(`${spiel.datum}T${spiel.zeit}:00`);
-  
-  // Status basierend auf Datenbank-Status (vom Live Dashboard gesetzt)
-  if (spiel.status === 'laufend') return 'laufend';
-  if (spiel.status === 'halbzeit') return 'halbzeit';
-  if (spiel.status === 'beendet') return 'abgeschlossen';
-  
-  // Automatische Status-Bestimmung basierend auf Zeit
-  if (now < spielZeit) {
-    return 'geplant';
-  } else {
-    // Wenn die Zeit vorbei ist, aber kein expliziter Status gesetzt wurde
-    return 'abgeschlossen';
+  const data = await response.json();
+
+  if (!data?.samstag || !data?.sonntag) {
+    throw new Error("Ungültige Spielplan-Daten.");
   }
+
+  return data;
 }
 
-function getStatusBadge(spiel: Spiel) {
-  const status = getGameStatus(spiel);
-  
-  switch (status) {
-    case 'laufend':
-      return (
-        <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full animate-pulse inline-flex items-center">
-          <Play className="w-3 h-3 mr-1" />
-          Läuft
-        </span>
-      );
-    case 'halbzeit':
-      return (
-        <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
-          <Pause className="w-3 h-3 mr-1" />
-          Halbzeit
-        </span>
-      );
-    case 'abgeschlossen':
-      return (
-        <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
-          <CheckCircle className="w-3 h-3 mr-1" />
-          Beendet
-        </span>
-      );
-    case 'geplant':
-    default:
-      return (
-        <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full inline-flex items-center">
-          <Clock className="w-3 h-3 mr-1" />
-          Geplant
-        </span>
-      );
+function toGameDate(spiel: Spiel) {
+  return new Date(`${spiel.datum}T${spiel.zeit}:00`);
+}
+
+function getScore(spiel: Spiel) {
+  if (spiel.ergebnis) {
+    return spiel.ergebnis;
   }
+
+  if (typeof spiel.tore_team1 === "number" && typeof spiel.tore_team2 === "number") {
+    return `${spiel.tore_team1}:${spiel.tore_team2}`;
+  }
+
+  return null;
 }
 
-function formatTime(timeString: string): string {
-  return timeString;
+function getVisualStatus(spiel: Spiel, nextGameIds: Set<string>): GameVisualStatus {
+  if (spiel.status === "laufend") return "laufend";
+  if (spiel.status === "halbzeit") return "halbzeit";
+  if (spiel.status === "beendet") return "beendet";
+  if (nextGameIds.has(spiel.id)) return "nächstes";
+
+  return "geplant";
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('de-DE', {
-    weekday: 'long',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+function getStatusMeta(status: GameVisualStatus) {
+  if (status === "laufend") {
+    return {
+      label: "Läuft",
+      icon: Play,
+      className: "border-[#5e6d35] bg-[#5e6d35] text-white",
+    };
+  }
+
+  if (status === "halbzeit") {
+    return {
+      label: "Halbzeit",
+      icon: Pause,
+      className: "border-[#d9dec8] bg-[#eef1e5] text-[#4f5d2f]",
+    };
+  }
+
+  if (status === "beendet") {
+    return {
+      label: "Beendet",
+      icon: CheckCircle2,
+      className: "border-[#d9dec8] bg-white text-[#4f5d2f]",
+    };
+  }
+
+  if (status === "nächstes") {
+    return {
+      label: "Als nächstes",
+      icon: Clock,
+      className: "border-[#8a9868] bg-[#f6f7f1] text-[#4f5d2f]",
+    };
+  }
+
+  return {
+    label: "Geplant",
+    icon: CalendarDays,
+    className: "border-[#e6e8de] bg-white text-muted-foreground",
+  };
 }
 
-function getWeekdayName(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('de-DE', {
-    weekday: 'long'
-  });
+function groupByTime(spiele: Spiel[]) {
+  return spiele.reduce<Record<string, Spiel[]>>((result, spiel) => {
+    result[spiel.zeit] ??= [];
+    result[spiel.zeit].push(spiel);
+    return result;
+  }, {});
 }
 
-function formatDateShort(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+function getCategoryCount(spiele: Spiel[]) {
+  return new Set(spiele.map((spiel) => formatScheduleCategoryLabel(spiel.kategorie))).size;
+}
+
+function getFieldCount(spiele: Spiel[]) {
+  return new Set(spiele.map((spiel) => spiel.feld)).size;
+}
+
+function getAllGames(data: SpielplanData | null) {
+  if (!data) return [];
+  return [...data.samstag.spiele, ...data.sonntag.spiele];
 }
 
 export default function SpielplanPage() {
   const [spielplanData, setSpielplanData] = useState<SpielplanData | null>(null);
-  const [selectedField, setSelectedField] = useState<string>('alle');
-  const [activeTab, setActiveTab] = useState<'samstag' | 'sonntag'>('samstag');
+  const [selectedField, setSelectedField] = useState("alle");
+  const [activeDay, setActiveDay] = useState<DayKey>("samstag");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [previewDraft] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("preview") === "1"
+  );
 
-  // Timer für aktuelle Zeit
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Lade Spielplan
-  useEffect(() => {
-    loadSpielplan();
-    // Aktualisiere alle 30 Sekunden
-    const interval = setInterval(loadSpielplan, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadSpielplan = async () => {
+  const loadSpielplan = useCallback(async () => {
     try {
-      const data = await getSpielplan();
+      setError(null);
+      const data = await getSpielplan(previewDraft);
       setSpielplanData(data);
-    } catch (error) {
-      console.error('Fehler beim Laden des Spielplans:', error);
+    } catch (loadError) {
+      console.error("Fehler beim Laden des Spielplans:", loadError);
+      setError(loadError instanceof Error ? loadError.message : "Fehler beim Laden des Spielplans.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [previewDraft]);
+
+  useEffect(() => {
+    loadSpielplan();
+    const interval = setInterval(loadSpielplan, 30000);
+    return () => clearInterval(interval);
+  }, [loadSpielplan]);
+
+  useSpielplanLiveEvents(loadSpielplan);
+
+  const allGames = useMemo(() => getAllGames(spielplanData), [spielplanData]);
+
+  const nextGameIds = useMemo(() => {
+    const upcomingGames = allGames
+      .filter((spiel) => spiel.status === "geplant" && toGameDate(spiel).getTime() >= currentTime.getTime())
+      .sort((a, b) => toGameDate(a).getTime() - toGameDate(b).getTime());
+
+    const nextGame = upcomingGames[0];
+    if (!nextGame) return new Set<string>();
+
+    const nextTime = `${nextGame.datum}-${nextGame.zeit}`;
+    return new Set(
+      upcomingGames
+        .filter((spiel) => `${spiel.datum}-${spiel.zeit}` === nextTime)
+        .map((spiel) => spiel.id)
+    );
+  }, [allGames, currentTime]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 text-center max-w-md w-full mx-4">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="w-12 h-12 bg-orange-500 rounded-full animate-spin"></div>
-            <div className="absolute top-1.5 left-1.5 w-9 h-9 bg-white rounded-full opacity-30"></div>
-          </div>
-          <p className="text-gray-600">Lade Spielplan...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!spielplanData) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center max-w-md w-full mx-4">
-          <div className="relative w-12 h-12 mx-auto mb-4">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-              <AlertTriangle className="h-6 w-6 text-red-500" />
-            </div>
-          </div>
-          <p className="text-red-700 mb-4">Fehler beim Laden des Spielplans</p>
-          <Button onClick={loadSpielplan} className="bg-orange-500 hover:bg-orange-600 text-white">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Erneut versuchen
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Filtere Spiele nach ausgewähltem Feld
-  const filterSpiele = (spiele: Spiel[]) => {
-    if (selectedField === 'alle') return spiele;
-    return spiele.filter(spiel => spiel.feld === selectedField);
-  };
-
-  const currentDaySpiele = activeTab === 'samstag' ? spielplanData.samstag : spielplanData.sonntag;
-  const filteredSpiele = filterSpiele(currentDaySpiele.spiele);
-
-  // Gruppiere Spiele nach Zeitslots
-  const groupedByTime = filteredSpiele.reduce((acc, spiel) => {
-    if (!acc[spiel.zeit]) {
-      acc[spiel.zeit] = [];
-    }
-    acc[spiel.zeit].push(spiel);
-    return acc;
-  }, {} as Record<string, Spiel[]>);
-
-  const timeSlots = Object.keys(groupedByTime).sort();
-
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4 w-full sm:w-auto">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-orange-600 hover:bg-orange-50">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Zurück</span>
-                  <span className="sm:hidden">Home</span>
-                </Button>
-              </Link>
-              <div className="flex items-center gap-3">
-                {/* Handball Ball Icon */}
-                <div className="relative w-8 h-8">
-                  <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
-                  <div className="absolute top-1 left-1 w-6 h-6 bg-white rounded-full opacity-30"></div>
-                </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Spielplan</h1>
-                  <p className="text-xs sm:text-sm text-gray-600">
-                    Aktualisiert: {currentTime.toLocaleTimeString('de-DE')}
-                  </p>
-                </div>
+      <div className="min-h-[70vh] bg-[#fbfbf8]">
+        <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center px-4 sm:px-6">
+          <div className="w-full max-w-md rounded-[8px] border border-[#d9dec8] bg-white p-6 shadow-sm">
+            <div className="flex items-center gap-3 text-[#4f5d2f]">
+              <RefreshCw className="size-5 animate-spin" />
+              <div>
+                <div className="font-semibold">Spielplan wird geladen</div>
+                <div className="mt-1 text-sm text-muted-foreground">Die aktuelle Turnieransicht wird vorbereitet.</div>
               </div>
             </div>
-            <Button 
-              onClick={loadSpielplan} 
-              variant="outline" 
-              size="sm" 
-              className="border-gray-300 text-gray-600 hover:bg-gray-50 w-full sm:w-auto"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Aktualisieren
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!spielplanData || error) {
+    return (
+      <div className="min-h-[70vh] bg-[#fbfbf8]">
+        <div className="mx-auto flex min-h-[70vh] max-w-6xl items-center px-4 sm:px-6">
+          <div className="w-full max-w-md rounded-[8px] border border-[#d9dec8] bg-white p-6 shadow-sm">
+            <AlertTriangle className="mb-4 size-6 text-destructive" />
+            <h1 className="text-2xl font-semibold tracking-normal">Spielplan nicht verfügbar</h1>
+            <div className="mt-2 text-sm text-muted-foreground">{error || "Die Daten konnten nicht geladen werden."}</div>
+            <Button onClick={loadSpielplan} variant="outline" className="mt-6 border-[#cdd5bd] text-[#4f5d2f]">
+              <RefreshCw className="size-4" />
+              Erneut versuchen
             </Button>
           </div>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      <div className="container mx-auto px-4 py-8 space-y-6">
+  const currentDay = spielplanData[activeDay];
+  const filteredSpiele =
+    selectedField === "alle" ? currentDay.spiele : currentDay.spiele.filter((spiel) => spiel.feld === selectedField);
+  const groupedSpiele = groupByTime(filteredSpiele);
+  const timeSlots = Object.keys(groupedSpiele).sort();
+  const totalGames = allGames.length;
+  const liveGames = allGames.filter((spiel) => ["laufend", "halbzeit"].includes(spiel.status)).length;
+  const endedGames = allGames.filter((spiel) => spiel.status === "beendet").length;
+  const currentDayFields = getFieldCount(currentDay.spiele);
+  const currentDayCategories = getCategoryCount(currentDay.spiele);
+  const noPublishedGames = !previewDraft && spielplanData.spielplanStatus && spielplanData.spielplanStatus !== "published";
 
-      {/* Filter */}
-      <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-            <label className="text-sm font-medium text-gray-900">Feld filtern:</label>
+  return (
+    <div className="min-h-screen bg-[#fbfbf8]">
+      <section className="border-b border-[#e1e4d8] bg-[#f6f7f1]">
+        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end lg:py-10">
+          <div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <Badge variant="outline" className="gap-1.5 border-[#d9dec8] bg-white/80 text-[#4f5d2f]">
+                <CalendarDays className="size-3.5" />
+                {previewDraft ? "Entwurfsvorschau" : "Spielplan"}
+              </Badge>
+              <Badge variant="outline" className="gap-1.5 border-[#d9dec8] bg-white/80 text-[#4f5d2f]">
+                <Clock className="size-3.5" />
+                Aktualisiert {currentTime.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr
+              </Badge>
+            </div>
+
+            <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-normal text-foreground sm:text-5xl">
+              Spielplan
+            </h1>
+            <div className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
+              Begegnungen, Felder und Tagesstatus für das Handball-Turnier des SV Puschendorf.
+            </div>
           </div>
-          <Select value={selectedField} onValueChange={setSelectedField}>
-            <SelectTrigger className="w-full sm:w-48 border-gray-200 bg-white">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="alle">Alle Felder</SelectItem>
-              {spielplanData.availableFields.map(field => (
-                <SelectItem key={field} value={field}>{field}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="text-sm text-gray-600 bg-white px-3 py-2 rounded-md border border-gray-200 w-full sm:w-auto text-center sm:text-left">
-            {filteredSpiele.length} Spiel(e) angezeigt
+
+          <div className="grid grid-cols-3 gap-2 rounded-[8px] border border-[#d9dec8] bg-white p-2 shadow-sm">
+            <div className="rounded-[6px] bg-[#f6f7f1] p-3">
+              <div className="text-2xl font-semibold text-[#4f5d2f]">{totalGames}</div>
+              <div className="mt-1 text-xs text-muted-foreground">Spiele</div>
+            </div>
+            <div className="rounded-[6px] bg-[#f6f7f1] p-3">
+              <div className="text-2xl font-semibold text-[#4f5d2f]">{spielplanData.availableFields.length}</div>
+              <div className="mt-1 text-xs text-muted-foreground">Felder</div>
+            </div>
+            <div className="rounded-[6px] bg-[#f6f7f1] p-3">
+              <div className="text-2xl font-semibold text-[#4f5d2f]">{liveGames || endedGames}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{liveGames ? "Live" : "Beendet"}</div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Tabs für Tage */}
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'samstag' | 'sonntag')}>
-        <TabsList className="grid w-full grid-cols-2 bg-gray-50 p-1 rounded-lg">
-          <TabsTrigger 
-            value="samstag" 
-            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-sm text-gray-600 font-medium"
-          >
-            <Calendar className="h-4 w-4" />
-            {getWeekdayName(spielplanData.samstag.datum)} ({formatDateShort(spielplanData.samstag.datum)})
-          </TabsTrigger>
-          <TabsTrigger 
-            value="sonntag" 
-            className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-sm text-gray-600 font-medium"
-          >
-            <Calendar className="h-4 w-4" />
-            {getWeekdayName(spielplanData.sonntag.datum)} ({formatDateShort(spielplanData.sonntag.datum)})
-          </TabsTrigger>
-        </TabsList>
+      <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        {previewDraft && (
+          <div className="mb-5 rounded-[8px] border border-[#d9dec8] bg-white p-4 text-sm text-[#4f5d2f]">
+            Admin-Entwurfsvorschau. Öffentlich erscheint der Plan erst nach Veröffentlichung.
+          </div>
+        )}
 
-        <TabsContent value={activeTab} className="space-y-6 mt-6">
-          {timeSlots.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-              <div className="relative w-16 h-16 mx-auto mb-6">
-                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-                  <div className="w-8 h-8 bg-orange-500 rounded-full"></div>
-                  <div className="absolute top-2 left-2 w-6 h-6 bg-white rounded-full opacity-30"></div>
-                </div>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Keine Spiele gefunden
-              </h3>
-              <p className="text-gray-600">
-                {selectedField === 'alle' 
-                  ? 'Für diesen Tag sind keine Spiele geplant.'
-                  : `Für ${selectedField} sind keine Spiele geplant.`
-                }
-              </p>
-            </div>
-          ) : (
-            timeSlots.map(zeitSlot => {
-              const spieleInSlot = groupedByTime[zeitSlot];
-              const laufendeSpiele = spieleInSlot.filter(s => getGameStatus(s) === 'laufend').length;
-              const halbzeitSpiele = spieleInSlot.filter(s => getGameStatus(s) === 'halbzeit').length;
-              
+        {noPublishedGames && (
+          <div className="mb-5 rounded-[8px] border border-[#d9dec8] bg-white p-4 text-sm text-[#4f5d2f]">
+            Der Spielplan wird aktuell vorbereitet.
+          </div>
+        )}
+
+        <div className="mb-6 grid gap-3 rounded-[8px] border border-[#d9dec8] bg-white p-3 shadow-sm md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
+          <div className="grid grid-cols-2 gap-2">
+            {(["samstag", "sonntag"] as DayKey[]).map((dayKey) => {
+              const day = spielplanData[dayKey];
+              const isActive = activeDay === dayKey;
+
               return (
-                <div key={zeitSlot} className="bg-white rounded-lg border border-gray-200 shadow-sm">
-                  <div className="border-b border-gray-100 p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          {formatTime(zeitSlot)} Uhr
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {laufendeSpiele > 0 && (
-                          <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
-                            {laufendeSpiele} läuft
-                          </span>
-                        )}
-                        {halbzeitSpiele > 0 && (
-                          <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full">
-                            {halbzeitSpiele} Halbzeit
-                          </span>
-                        )}
-                        <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full">
-                          {spieleInSlot.length} Spiel(e)
-                        </span>
+                <button
+                  key={dayKey}
+                  type="button"
+                  onClick={() => setActiveDay(dayKey)}
+                  className={cn(
+                    "min-h-20 rounded-[8px] border px-3 py-3 text-left transition md:min-h-16",
+                    isActive
+                      ? "border-[#5e6d35] bg-[#5e6d35] text-white shadow-sm"
+                      : "border-[#e1e4d8] bg-[#fbfbf8] text-foreground hover:border-[#cdd5bd]"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium uppercase tracking-normal opacity-80">{dayLabels[dayKey]}</span>
+                    <span className="text-xs opacity-80">{day.spiele.length} Spiele</span>
+                  </div>
+                  <div className="mt-2 truncate text-sm font-semibold">{day.datum}</div>
+                  <div className={cn("mt-1 text-xs", isActive ? "text-white/80" : "text-muted-foreground")}>{day.zeit}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Filter className="size-4 shrink-0 text-[#4f5d2f]" />
+            <Select value={selectedField} onValueChange={setSelectedField}>
+              <SelectTrigger aria-label="Feld filtern" className="border-[#d9dec8] bg-[#fbfbf8]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alle">Alle Felder</SelectItem>
+                {spielplanData.availableFields.map((field) => (
+                  <SelectItem key={field} value={field}>
+                    {field}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[8px] border border-[#e1e4d8] bg-white p-4">
+            <div className="text-xs text-muted-foreground">Tag</div>
+            <div className="mt-1 font-semibold text-[#4f5d2f]">{currentDay.spiele.length} Spiele</div>
+          </div>
+          <div className="rounded-[8px] border border-[#e1e4d8] bg-white p-4">
+            <div className="text-xs text-muted-foreground">Felder aktiv</div>
+            <div className="mt-1 font-semibold text-[#4f5d2f]">{currentDayFields}</div>
+          </div>
+          <div className="rounded-[8px] border border-[#e1e4d8] bg-white p-4">
+            <div className="text-xs text-muted-foreground">Kategorien</div>
+            <div className="mt-1 font-semibold text-[#4f5d2f]">{currentDayCategories}</div>
+          </div>
+        </div>
+
+        {timeSlots.length === 0 ? (
+          <div className="rounded-[8px] border border-dashed border-[#cdd5bd] bg-white p-10 text-center">
+            <CalendarDays className="mx-auto mb-4 size-8 text-[#8a9868]" />
+            <div className="font-semibold">Keine Spiele gefunden</div>
+            <div className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+              {selectedField === "alle"
+                ? "Für diesen Tag sind noch keine Spiele geplant."
+                : `Für ${selectedField} sind keine Spiele geplant.`}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {timeSlots.map((zeitSlot) => {
+              const spieleInSlot = groupedSpiele[zeitSlot];
+
+              return (
+                <section key={zeitSlot} className="grid gap-3 md:grid-cols-[96px_minmax(0,1fr)]">
+                  <div className="md:pt-1">
+                    <div className="sticky top-4 inline-flex items-center gap-2 rounded-[8px] border border-[#d9dec8] bg-white px-3 py-2 shadow-sm md:flex-col md:items-start">
+                      <Clock className="size-4 text-[#4f5d2f]" />
+                      <div>
+                        <div className="font-semibold text-[#4f5d2f]">{zeitSlot}</div>
+                        <div className="text-xs text-muted-foreground">Uhr</div>
                       </div>
                     </div>
                   </div>
-                  <div className="p-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-gray-100">
-                          <TableHead className="w-24 text-gray-600">Status</TableHead>
-                          <TableHead className="w-24 text-gray-600">Feld</TableHead>
-                          <TableHead className="text-gray-600">Teams</TableHead>
-                          <TableHead className="w-32 text-gray-600">Kategorie</TableHead>
-                          <TableHead className="w-24 text-center text-gray-600">Ergebnis</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {spieleInSlot.map((spiel) => (
-                          <TableRow key={spiel.id} className="border-gray-100 hover:bg-orange-50">
-                            <TableCell className="py-4">
-                              {getStatusBadge(spiel)}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2 py-1 rounded-full">
-                                <MapPin className="w-3 h-3 mr-1 inline" />
-                                {spiel.feld}
-                              </span>
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                <span className="text-gray-900">{spiel.team1}</span>
-                                <span className="text-gray-400">vs</span>
-                                <span className="text-gray-900">{spiel.team2}</span>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {spieleInSlot.map((spiel) => {
+                      const status = getVisualStatus(spiel, nextGameIds);
+                      const statusMeta = getStatusMeta(status);
+                      const StatusIcon = statusMeta.icon;
+                      const showScore = ["laufend", "halbzeit", "beendet"].includes(spiel.status);
+                      const score = showScore ? getScore(spiel) : null;
+
+                      return (
+                        <article
+                          key={spiel.id}
+                          className={cn(
+                            "rounded-[8px] border bg-white p-4 shadow-sm transition",
+                            status === "laufend" ? "border-[#5e6d35] ring-2 ring-[#d9dec8]" : "border-[#e1e4d8]"
+                          )}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Badge className={cn("gap-1.5", statusMeta.className)}>
+                              <StatusIcon className="size-3" />
+                              {statusMeta.label}
+                            </Badge>
+                            <Badge variant="outline" className="gap-1 border-[#d9dec8] text-[#4f5d2f]">
+                              <MapPin className="size-3" />
+                              {spiel.feld}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_72px] sm:items-center">
+                            <div className="min-w-0">
+                              <div className="truncate text-base font-semibold">{spiel.team1}</div>
+                              <div className="my-1 text-xs uppercase tracking-normal text-muted-foreground">gegen</div>
+                              <div className="truncate text-base font-semibold">{spiel.team2}</div>
+                            </div>
+
+                            <div className="rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] px-3 py-2 text-center">
+                              <div className="text-[11px] text-muted-foreground">Ergebnis</div>
+                              <div className="mt-1 font-mono text-xl font-semibold text-[#4f5d2f]">
+                                {score || "-"}
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded-full">
-                                {spiel.kategorie}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {spiel.ergebnis ? (
-                                <span className="font-mono font-semibold text-gray-900">
-                                  {spiel.ergebnis}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#eef0e8] pt-3 text-xs text-muted-foreground">
+                            <Badge variant="secondary" className="bg-[#f6f7f1] text-[#4f5d2f]">
+                              {formatScheduleCategoryLabel(spiel.kategorie)}
+                            </Badge>
+                            <span>{currentDay.datum}</span>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
-                </div>
+                </section>
               );
-            })
-          )}
-        </TabsContent>
-      </Tabs>
-      </div>
+            })}
+          </div>
+        )}
+
+        <div className="mt-8 flex flex-col gap-3 rounded-[8px] border border-[#d9dec8] bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-semibold text-[#4f5d2f]">Ergebnisse</div>
+            <div className="mt-1 text-sm text-muted-foreground">Abgeschlossene Spiele und sichtbare Resultate.</div>
+          </div>
+          <Button asChild variant="outline" className="border-[#cdd5bd] text-[#4f5d2f]">
+            <Link href="/ergebnisse">
+              <Trophy className="size-4" />
+              Ergebnisse ansehen
+            </Link>
+          </Button>
+        </div>
+      </section>
     </div>
   );
 }

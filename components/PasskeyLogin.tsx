@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -152,47 +153,16 @@ export default function PasskeyLogin({ onSuccess, onError, className = "" }: Pas
 
       const options = await optionsResponse.json();
 
-      // 2. Convert challenge to ArrayBuffer
-      const credentialRequestOptions: CredentialRequestOptions = {
-        publicKey: {
-          ...options,
-          challenge: new TextEncoder().encode(options.challenge),
-          allowCredentials: options.allowCredentials?.map((cred: any) => ({
-            ...cred,
-            id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-          }))
-        }
-      };
+      // 2. Get credential from authenticator
+      const credential = await startAuthentication({ optionsJSON: options });
 
-      // 3. Get credential from authenticator
-      const credential = await navigator.credentials.get(credentialRequestOptions) as PublicKeyCredential;
-      
-      if (!credential) {
-        throw new Error('Authentifizierung wurde abgebrochen');
-      }
-
-      // 4. Send credential to server for verification
+      // 3. Send credential to server for verification
       const authResponse = await fetch('/api/auth/passkey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'authenticate',
-          credential: {
-            id: credential.id,
-            rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
-            response: {
-              authenticatorData: btoa(String.fromCharCode(...new Uint8Array(
-                (credential.response as AuthenticatorAssertionResponse).authenticatorData
-              ))),
-              clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(
-                credential.response.clientDataJSON
-              ))),
-              signature: btoa(String.fromCharCode(...new Uint8Array(
-                (credential.response as AuthenticatorAssertionResponse).signature
-              )))
-            },
-            type: credential.type
-          },
+          credential,
           challenge: options.challenge
         })
       });

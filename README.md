@@ -53,6 +53,24 @@ npm run dev
 # Anwendung öffnet sich auf http://localhost:3002
 ```
 
+## Docker-Setup
+
+Der einfachste Produktionsstart läuft über das Docker-Skript:
+
+```bash
+./docker-run.sh
+```
+
+Beim ersten Start erstellt das Skript `.env.docker`, generiert `ADMIN_EMAIL`/`ADMIN_PASSWORD`, `SESSION_SECRET` und weitere interne Secrets, baut das Image und startet den Container auf `http://localhost:3000`. Die ausgegebenen Admin-Daten gelten für `/admin/login`.
+
+Nützliche Varianten:
+
+```bash
+./docker-run.sh --admin-email admin@example.de --app-url https://turnier.example.de
+./docker-run.sh --reset-admin --show-admin
+docker compose --env-file .env.docker up -d --build
+```
+
 ## 📧 E-Mail-Konfiguration
 
 Die Anwendung verwendet Ethereal Email für Entwicklung. Für Produktion:

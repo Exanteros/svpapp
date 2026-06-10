@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Download, FileText, QrCode, Camera, Scan, Trophy, AlertCircle } from 'lucide-react';
-import QRCode from 'qrcode';
-import jsPDF from 'jspdf';
-import JSZip from 'jszip';
+import { useEffect, useMemo, useState } from "react";
+import { FileText, QrCode, Upload, X } from "lucide-react";
+import jsPDF from "jspdf";
+import QRCode from "qrcode";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Spiel {
   id: string;
@@ -19,799 +19,458 @@ interface Spiel {
   team1: string;
   team2: string;
   status: string;
-  ergebnis?: string;
+  ergebnis?: string | null;
 }
 
 interface SchiedsrichterkarteGeneratorProps {
   spiele: Spiel[];
   turnierName: string;
+  embedded?: boolean;
 }
 
-interface KartenDaten {
+interface ScoreCode {
   spielId: string;
-  team1: string;
-  team2: string;
-  datum: string;
-  zeit: string;
-  feld: string;
-  kategorie: string;
-  qrCodeData: string;
+  code: string;
 }
 
-export default function SchiedsrichterkarteGenerator({ spiele, turnierName }: SchiedsrichterkarteGeneratorProps) {
+interface UploadedLogo {
+  dataUrl: string;
+  name: string;
+  aspectRatio: number;
+}
+
+const PAGE_WIDTH = 210;
+const PAGE_HEIGHT = 297;
+const PAGE_MARGIN = 8;
+const CARD_GAP = 3;
+const CARD_COLUMNS = 3;
+const CARD_ROWS = 3;
+const CARDS_PER_PAGE = CARD_COLUMNS * CARD_ROWS;
+const CARD_WIDTH = (PAGE_WIDTH - PAGE_MARGIN * 2 - CARD_GAP * (CARD_COLUMNS - 1)) / CARD_COLUMNS;
+const CARD_HEIGHT = (PAGE_HEIGHT - PAGE_MARGIN * 2 - CARD_GAP * (CARD_ROWS - 1)) / CARD_ROWS;
+const LOGO_STORAGE_KEY = "svp_referee_card_logo";
+const QR_SIZE = 6;
+const QR_Y = 9.1;
+const TEAM_ONE_Y = 16.2;
+const TEAM_TWO_Y = 22.2;
+const GOAL_STRIKE_Y = 30.4;
+const GOAL_GRID_GAP = 2;
+const GOAL_GRID_COLUMNS = 5;
+const GOAL_GRID_CELL_HEIGHT = 9.65;
+
+export default function SchiedsrichterkarteGenerator({
+  spiele,
+  turnierName,
+  embedded = false,
+}: SchiedsrichterkarteGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewSpiel, setPreviewSpiel] = useState<Spiel | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanningActive, setScanningActive] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Template-Koordinaten für 8x12cm Handball-Spielnotizkarte (EXAKTE KOORDINATEN!)
-  const TEMPLATE_CONFIG = {
-    // 8cm x 12cm bei 300 DPI = 945px x 1417px (Hochformat!)
-    width: 945, 
-    height: 1417,
-    templateImage: '/handball-spielnotizkarte.png', // Echtes Template
-    // EXAKTE Koordinaten mit größeren Schriftgrößen für bessere Lesbarkeit:
-    // Team 1 Box: x:15, y:220 bis x:337, y:323 (Breite: 322px, Höhe: 103px)
-    team1: { x: 20, y: 250, fontSize: 22, maxWidth: 310, fontWeight: 'bold' },
-    // Team 2 Box: x:455, y:223 bis x:772, y:322 (Breite: 317px, Höhe: 99px)  
-    team2: { x: 460, y: 250, fontSize: 22, maxWidth: 305, fontWeight: 'bold' },
-    // Besondere Vorkommnisse: x:15, y:980 bis x:440, y:1135 (Breite: 425px, Höhe: 155px)
-    feldZeit1: { x: 20, y: 1010, fontSize: 16, maxWidth: 415 },
-    // Für Team 2 nehmen wir die rechte Seite (spiegelbildlich)
-    feldZeit2: { x: 460, y: 1010, fontSize: 16, maxWidth: 300 },
-    // QR-Code größer und prominenter platzieren (2D Matrix Code)
-    qrCode: { x: 650, y: 1100, size: 200 } // Deutlich größer: 200px statt 100px
-  };
+  const [uploadedLogo, setUploadedLogo] = useState<UploadedLogo | null>(null);
+  const playableGames = useMemo(
+    () => spiele.filter((spiel) => spiel.team1 && spiel.team2),
+    [spiele]
+  );
+  const pageCount = Math.max(1, Math.ceil(playableGames.length / CARDS_PER_PAGE));
 
-  // QR-Code Daten generieren
-  const generateQRData = (spiel: Spiel): string => {
-    return JSON.stringify({
-      id: spiel.id,
-      team1: spiel.team1,
-      team2: spiel.team2,
-      datum: spiel.datum,
-      zeit: spiel.zeit,
-      feld: spiel.feld,
-      kategorie: spiel.kategorie,
-      timestamp: new Date().toISOString()
-    });
-  };
-
-  // Einzelne Schiedsrichterkarte generieren
-  const generateKarte = async (spiel: Spiel): Promise<Blob> => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    
-    canvas.width = TEMPLATE_CONFIG.width;
-    canvas.height = TEMPLATE_CONFIG.height;
-
-    // Weißer Hintergrund
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // PNG-Template laden (falls verfügbar)
+  useEffect(() => {
     try {
-      const templateImg = new Image();
-      templateImg.crossOrigin = 'anonymous';
-      
-      const templateLoadPromise = new Promise<void>((resolve, reject) => {
-        templateImg.onload = () => resolve();
-        templateImg.onerror = () => reject(new Error('Template konnte nicht geladen werden'));
-      });
-      
-      templateImg.src = TEMPLATE_CONFIG.templateImage;
-      
-      try {
-        await templateLoadPromise;
-        ctx.drawImage(templateImg, 0, 0, canvas.width, canvas.height);
-        console.log('✅ PNG-Template erfolgreich geladen');
-      } catch (templateError) {
-        console.log('⚠️ PNG-Template nicht verfügbar, verwende Fallback-Design');
-        // Fallback zu manuellem Design
-        await generateFallbackDesign(ctx, spiel);
+      const savedLogo = localStorage.getItem(LOGO_STORAGE_KEY);
+
+      if (savedLogo) {
+        setUploadedLogo(JSON.parse(savedLogo));
       }
     } catch (error) {
-      console.log('⚠️ PNG-Template nicht verfügbar, verwende Fallback-Design');
-      await generateFallbackDesign(ctx, spiel);
+      console.error("Logo konnte nicht geladen werden:", error);
+      localStorage.removeItem(LOGO_STORAGE_KEY);
+    }
+  }, []);
+
+  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
     }
 
-    // Spielinformationen auf Template zeichnen (mit größeren Schriftgrößen)
-    ctx.fillStyle = '#000000';
-    ctx.font = `bold ${TEMPLATE_CONFIG.team1.fontSize}px Arial`;
-    
-    // Team 1 (Box: x:15, y:220 bis x:337, y:323)
-    // Text zentriert in der Box platzieren mit größerer Schrift
-    ctx.textAlign = 'center';
-    const team1BoxCenterX = 15 + (337 - 15) / 2; // 176px
-    const team1BoxCenterY = 220 + (323 - 220) / 2 + 8; // 259px + offset für größere Schrift
-    ctx.fillText(spiel.team1, team1BoxCenterX, team1BoxCenterY);
-    
-    // Team 2 (Box: x:455, y:223 bis x:772, y:322)  
-    const team2BoxCenterX = 455 + (772 - 455) / 2; // 613px
-    const team2BoxCenterY = 223 + (322 - 223) / 2 + 8; // 280px + offset für größere Schrift
-    ctx.fillText(spiel.team2, team2BoxCenterX, team2BoxCenterY);
-    
-    ctx.textAlign = 'left'; // Zurück zu links-ausgerichtet
+    if (!file.type.startsWith("image/")) {
+      toast.error("Bitte eine Bilddatei hochladen");
+      return;
+    }
 
-    // Feld und Zeit in "Besondere Vorkommnisse" mit VIEL größerer Schrift
-    ctx.font = `bold 20px Arial`; // Von 16px auf 20px vergrößert
-    
-    // Nur in die linke "Besondere Vorkommnisse" Box schreiben mit mehr Abstand
-    ctx.fillText(`FELD: ${spiel.feld}`, TEMPLATE_CONFIG.feldZeit1.x, TEMPLATE_CONFIG.feldZeit1.y);
-    ctx.fillText(`ZEIT: ${spiel.zeit}`, TEMPLATE_CONFIG.feldZeit1.x, TEMPLATE_CONFIG.feldZeit1.y + 35);
-    ctx.fillText(`KATEGORIE: ${spiel.kategorie}`, TEMPLATE_CONFIG.feldZeit1.x, TEMPLATE_CONFIG.feldZeit1.y + 70);
+    try {
+      const logo = await prepareLogo(file);
+      setUploadedLogo(logo);
+      localStorage.setItem(LOGO_STORAGE_KEY, JSON.stringify(logo));
+      toast.success("Logo für Schiedsrichterkarten gespeichert");
+    } catch (error) {
+      console.error(error);
+      toast.error("Logo konnte nicht verarbeitet werden");
+    }
+  }
 
-    // QR-Code generieren (größerer 2D Matrix Code)
-    const qrCodeData = generateQRData(spiel);
-    const qrCodeCanvas = document.createElement('canvas');
-    
-    await QRCode.toCanvas(qrCodeCanvas, qrCodeData, {
-      width: TEMPLATE_CONFIG.qrCode.size, // Jetzt 200px
-      margin: 2,
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      },
-      errorCorrectionLevel: 'H' // Höchste Fehlerkorrektur für bessere Lesbarkeit
-    });
+  function removeLogo() {
+    setUploadedLogo(null);
+    localStorage.removeItem(LOGO_STORAGE_KEY);
+    toast.success("Logo entfernt");
+  }
 
-    // QR-Code auf Hauptcanvas zeichnen
-    ctx.drawImage(
-      qrCodeCanvas, 
-      TEMPLATE_CONFIG.qrCode.x, 
-      TEMPLATE_CONFIG.qrCode.y,
-      TEMPLATE_CONFIG.qrCode.size,
-      TEMPLATE_CONFIG.qrCode.size
-    );
-
-    // Canvas zu Blob konvertieren
-    return new Promise(resolve => {
-      canvas.toBlob(resolve as BlobCallback, 'image/png', 1.0);
-    });
-  };
-
-  // Fallback-Design mit exakten Koordinaten und größeren Schriftgrößen
-  const generateFallbackDesign = async (ctx: CanvasRenderingContext2D, spiel: Spiel) => {
-    // Hochformat Design für 8x12cm mit exakten Template-Maßen
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 32px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('HANDBALL-SPIELNOTIZKARTE', 472, 80);
-    
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(`${turnierName}`, 472, 120);
-    ctx.textAlign = 'left';
-
-    // Rahmen und Strukturen exakt wie im Original
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    
-    // Hauptrahmen
-    ctx.strokeRect(5, 5, 935, 1407);
-    
-    // Team 1 Box (x:15, y:220 bis x:337, y:323)
-    ctx.strokeRect(15, 220, 322, 103);
-    ctx.font = 'bold 14px Arial';
-    ctx.fillText('Verein/Trikotfarbe', 20, 210);
-    
-    // Team 2 Box (x:455, y:223 bis x:772, y:322)
-    ctx.strokeRect(455, 223, 317, 99);
-    ctx.fillText('Verein/Trikotfarbe', 460, 213);
-
-    // Zahlen-Bereiche (zwischen Team-Namen und Besondere Vorkommnisse)
-    ctx.strokeRect(15, 340, 440, 620); // Links
-    ctx.strokeRect(455, 340, 440, 620); // Rechts
-    
-    // Besondere Vorkommnisse (x:15, y:980 bis x:440, y:1135)
-    ctx.strokeRect(15, 980, 425, 155);
-    ctx.strokeRect(455, 980, 425, 155); // Rechte Seite
-    
-    ctx.font = 'bold 14px Arial';
-    ctx.fillText('Besondere Vorkommnisse:', 20, 970);
-    ctx.fillText('Besondere Vorkommnisse:', 460, 970);
-
-    // Vereinfachtes Zahlen-Grid (1-40) mit größerer Schrift
-    const drawNumberGrid = (startX: number, startY: number, width: number) => {
-      ctx.font = 'bold 12px Arial'; // Größere Schrift für Zahlen
-      for (let i = 1; i <= 40; i++) {
-        const cols = 4;
-        const col = (i - 1) % cols;
-        const row = Math.floor((i - 1) / cols);
-        const cellWidth = width / cols;
-        const x = startX + col * cellWidth;
-        const y = startY + row * 50;
-        
-        ctx.strokeRect(x, y, cellWidth - 2, 45);
-        ctx.textAlign = 'center';
-        ctx.fillText(i.toString(), x + cellWidth/2, y + 28);
-        ctx.textAlign = 'left';
-      }
-    };
-    
-    drawNumberGrid(20, 350, 430);  // Links
-    drawNumberGrid(460, 350, 430); // Rechts
-
-    // QR-Code Label mit größerer Schrift
-    ctx.font = 'bold 12px Arial';
-    ctx.fillText('QR-Code für Ergebnis-Eingabe', TEMPLATE_CONFIG.qrCode.x - 50, TEMPLATE_CONFIG.qrCode.y + TEMPLATE_CONFIG.qrCode.size + 20);
-  };
-
-  // Alle Karten als ZIP generieren
-  const generateAllKarten = async () => {
-    if (spiele.length === 0) {
-      alert('Keine Spiele verfügbar!');
+  async function generateA4Cards() {
+    if (playableGames.length === 0) {
+      toast.error("Kein Spielplan vorhanden");
       return;
     }
 
     setIsGenerating(true);
-    
-    try {
-      const zip = new JSZip();
-      const kartenFolder = zip.folder('schiedsrichterkarten');
 
-      for (let i = 0; i < spiele.length; i++) {
-        const spiel = spiele[i];
-        console.log(`Generiere Karte ${i + 1}/${spiele.length}: ${spiel.team1} vs ${spiel.team2}`);
-        
-        const kartenBlob = await generateKarte(spiel);
-        const filename = `${spiel.datum}_${spiel.zeit.replace(':', '')}_${spiel.feld.replace(' ', '')}_${spiel.team1.replace(' ', '_')}_vs_${spiel.team2.replace(' ', '_')}.png`;
-        
-        kartenFolder?.file(filename, kartenBlob);
+    try {
+      const codes = await createScoreCodes(playableGames.map((spiel) => spiel.id));
+      const codesByGameId = new Map(codes.map((code) => [code.spielId, code.code]));
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+      for (let index = 0; index < playableGames.length; index++) {
+        if (index > 0 && index % CARDS_PER_PAGE === 0) {
+          doc.addPage();
+        }
+
+        const pageIndex = index % CARDS_PER_PAGE;
+        const column = pageIndex % CARD_COLUMNS;
+        const row = Math.floor(pageIndex / CARD_COLUMNS);
+        const x = PAGE_MARGIN + column * (CARD_WIDTH + CARD_GAP);
+        const y = PAGE_MARGIN + row * (CARD_HEIGHT + CARD_GAP);
+        const spiel = playableGames[index];
+        const scoreCode = codesByGameId.get(spiel.id);
+
+        if (!scoreCode) {
+          throw new Error(`Kein Karten-Code für Spiel ${spiel.id}`);
+        }
+
+        const qrDataUrl = await QRCode.toDataURL(scoreCode, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 160,
+          color: {
+            dark: "#000000",
+            light: "#ffffff",
+          },
+        });
+
+        drawCard(doc, spiel, qrDataUrl, uploadedLogo, x, y, index + 1, turnierName);
       }
 
-      // ZIP herunterladen
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Schiedsrichterkarten_${turnierName.replace(' ', '_')}_${new Date().toISOString().split('T')[0]}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      console.log(`✅ ${spiele.length} Schiedsrichterkarten erfolgreich generiert!`);
-      alert(`✅ ${spiele.length} Schiedsrichterkarten erfolgreich als ZIP heruntergeladen!`);
-      
+      addCutMarks(doc);
+      doc.save(`Schiedsrichterkarten_A4_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success(`${playableGames.length} Schiedsrichterkarten erstellt`);
     } catch (error) {
-      console.error('Fehler beim Generieren der Karten:', error);
-      alert('Fehler beim Generieren der Schiedsrichterkarten!');
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Schiedsrichterkarten konnten nicht erstellt werden");
     } finally {
       setIsGenerating(false);
     }
-  };
+  }
 
-  // Vorschau für einzelne Karte
-  const showKartenPreview = async (spiel: Spiel) => {
-    setPreviewSpiel(spiel);
-    setShowPreview(true);
-    
-    // Karte in Canvas rendern
-    setTimeout(async () => {
-      if (canvasRef.current) {
-        const kartenBlob = await generateKarte(spiel);
-        const img = new Image();
-        img.onload = () => {
-          const ctx = canvasRef.current?.getContext('2d');
-          if (ctx && canvasRef.current) {
-            canvasRef.current.width = img.width;
-            canvasRef.current.height = img.height;
-            ctx.drawImage(img, 0, 0);
-          }
-        };
-        img.src = URL.createObjectURL(kartenBlob);
-      }
-    }, 100);
-  };
-
-  // Scanner für Schiedsrichterkarten mit automatischer Erkennung
-  const startScanner = async () => {
-    setIsScanning(true);
-    setScanningActive(true);
-    
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment', width: 1280, height: 720 } 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        
-        // Warte bis Video bereit ist, dann starte automatisches Scannen
-        videoRef.current.onloadedmetadata = () => {
-          startAutoScan();
-        };
-      }
-    } catch (error) {
-      console.error('Fehler beim Zugriff auf Kamera:', error);
-      alert('Kamera-Zugriff fehlgeschlagen!');
-      setIsScanning(false);
-      setScanningActive(false);
-    }
-  };
-
-  // Automatisches Scannen alle 500ms
-  const startAutoScan = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-    }
-    
-    scanIntervalRef.current = setInterval(() => {
-      if (scanningActive && videoRef.current) {
-        scanQRCodeAutomatic();
-      }
-    }, 500); // Alle 500ms scannen
-  };
-
-  const stopScanner = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-    }
-    
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    
-    setIsScanning(false);
-    setScanningActive(false);
-  };
-
-  // QR-Code aus Video scannen und Punkte eingeben (Legacy-Funktion für manuellen Button)
-  const scanQRCode = async () => {
-    // Verwende die erste verfügbare Spiel für Demo
-    if (spiele.length > 0) {
-      await processQRData(spiele[0]);
-    } else {
-      alert('❌ Keine Spiele verfügbar für QR-Code');
-    }
-  };
-
-  // Automatisches QR-Code Scannen (kontinuierlich)
-  const scanQRCodeAutomatic = async () => {
-    try {
-      const video = videoRef.current;
-      if (!video || !scanningActive) return;
-      
-      // Video-Frame für QR-Analyse erfassen
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      
-      // Bild-Daten für QR-Scan extrahieren
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      // Hier würde jsQR verwendet: const code = jsQR(imageData.data, canvas.width, canvas.height);
-      // Für jetzt: Simuliere QR-Erkennung durch Bildanalyse
-      
-      // Demo: Überprüfe ob genug Kontrast für QR-Code vorhanden ist
-      const pixels = imageData.data;
-      let darkPixels = 0;
-      let lightPixels = 0;
-      
-      for (let i = 0; i < pixels.length; i += 4) {
-        const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        if (brightness < 128) darkPixels++;
-        else lightPixels++;
-      }
-      
-      // Wenn ausreichend Kontrast, simuliere QR-Code Erkennung
-      const contrastRatio = darkPixels / lightPixels;
-      if (contrastRatio > 0.1 && contrastRatio < 10) {
-        console.log('🔍 Möglicher QR-Code erkannt, analysiere...');
-        
-        // Benutzer manuell nach Spiel fragen (da echter QR-Scan komplex ist)
-        setScanningActive(false); // Stoppe automatisches Scannen
-        
-        // Zeige Spiel-Auswahl Dialog
-        const spielAuswahl = await showSpielAuswahlDialog();
-        if (spielAuswahl) {
-          await processQRData(spielAuswahl);
-        } else {
-          setScanningActive(true); // Setze Scannen fort
-        }
-      }
-      
-    } catch (error) {
-      console.error('Fehler beim automatischen QR-Scannen:', error);
-    }
-  };
-
-  // Spiel-Auswahl Dialog
-  const showSpielAuswahlDialog = async (): Promise<Spiel | null> => {
-    return new Promise((resolve) => {
-      const spielListe = spiele.map((spiel, index) => 
-        `${index + 1}. ${spiel.team1} vs ${spiel.team2} (${spiel.datum}, ${spiel.zeit}, ${spiel.feld})`
-      ).join('\n');
-      
-      const auswahl = prompt(
-        `📱 QR-Code erkannt! Welches Spiel?\n\n${spielListe}\n\nGeben Sie die Nummer ein (1-${spiele.length}) oder 0 zum Abbrechen:`
-      );
-      
-      if (auswahl && auswahl !== '0') {
-        const index = parseInt(auswahl) - 1;
-        if (index >= 0 && index < spiele.length) {
-          resolve(spiele[index]);
-          return;
-        }
-      }
-      
-      resolve(null);
-    });
-  };
-
-  // QR-Daten verarbeiten (korrigierte Team-Namen)
-  const processQRData = async (spiel: Spiel) => {
-    try {
-      console.log('✅ QR-Code für Spiel erkannt:', spiel);
-      
-      // KORRIGIERTE Team-Namen verwenden (nicht Demo-Daten!)
-      const qrData = {
-        id: spiel.id,
-        team1: spiel.team1, // ECHTE Team-Namen aus Spiel-Daten
-        team2: spiel.team2, // ECHTE Team-Namen aus Spiel-Daten
-        datum: spiel.datum,
-        zeit: spiel.zeit,
-        feld: spiel.feld,
-        kategorie: spiel.kategorie
-      };
-      
-      // Direkte Punkte-Eingabe mit KORREKTEN Team-Namen
-      const team1Punkte = prompt(`🥅 Tore für ${qrData.team1} eingeben:`);
-      const team2Punkte = prompt(`🥅 Tore für ${qrData.team2} eingeben:`);
-      
-      if (team1Punkte !== null && team2Punkte !== null) {
-        const ergebnis = `${team1Punkte}:${team2Punkte}`;
-        
-        console.log(`💾 Speichere Ergebnis: ${qrData.team1} ${ergebnis} ${qrData.team2}`);
-        
-        // Ergebnis automatisch speichern
-        const response = await fetch('/api/schiedsrichterkarten', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            action: 'save_result_from_qr',
-            spielId: qrData.id,
-            ergebnis: ergebnis
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          alert(`✅ Ergebnis erfolgreich gespeichert!\n\n${qrData.team1} vs ${qrData.team2}\nErgebnis: ${ergebnis}`);
-          stopScanner();
-          
-          // Seite neu laden um aktualisierte Ergebnisse anzuzeigen
-          window.location.reload();
-        } else {
-          const error = await response.json();
-          alert(`❌ Fehler beim Speichern: ${error.error}`);
-          setScanningActive(true); // Setze Scannen fort
-        }
-      } else {
-        alert('❌ Punkte-Eingabe abgebrochen');
-        setScanningActive(true); // Setze Scannen fort
-      }
-      
-    } catch (error) {
-      console.error('Fehler beim Verarbeiten der QR-Daten:', error);
-      alert('❌ Fehler beim Verarbeiten der QR-Daten');
-      setScanningActive(true); // Setze Scannen fort
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Haupt-Steuerung */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Schiedsrichterkarten Generator
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Template Upload Bereich */}
-          <div className="mb-6 p-4 bg-blue-50 rounded-lg border-2 border-dashed border-blue-200">
-            <div className="text-center">
-              <h3 className="font-medium text-blue-800 mb-2">PNG-Template hochladen</h3>
-              <p className="text-sm text-blue-600 mb-3">
-                Laden Sie Ihr Schiedsrichterkarten-Template hoch. Die Teamnamen werden automatisch an den konfigurierten Positionen eingefügt.
-              </p>
-              <div className="flex items-center justify-center gap-4">
-                <input
-                  type="file"
-                  accept="image/png"
-                  className="hidden"
-                  id="template-upload"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      alert(`Template "${file.name}" ausgewählt. Speichern Sie es als "handball-spielnotizkarte.png" im public-Ordner für optimale Ergebnisse.`);
-                    }
-                  }}
-                />
-                <label
-                  htmlFor="template-upload"
-                  className="cursor-pointer px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  PNG Template hochladen
-                </label>
-                <span className="text-xs text-blue-500">
-                  Hochformat: 8cm x 12cm (945px x 1417px)
-                </span>
-              </div>
-            </div>
+  const content = (
+    <>
+      <CardHeader className="flex min-w-0 flex-col gap-3 px-0 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <CardTitle className="text-lg">Schiedsrichterkarten</CardTitle>
+          <p className="!mt-1 text-sm text-muted-foreground">
+            DIN A4 Druckbogen mit 9 Spielpaarungen und App-Code zur Ergebniseingabe in der PWA.
+          </p>
+        </div>
+        <Badge variant="outline" className="w-fit border-[#d9dec8] text-[#5e6d35]">
+          {playableGames.length} Spiele · {pageCount} Seite(n)
+        </Badge>
+      </CardHeader>
+      <CardContent className="grid min-w-0 gap-4 px-0 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
+        <div className="grid min-w-0 gap-3 md:grid-cols-3">
+          <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
+            <FileText className="mb-3 size-5 text-[#5e6d35]" />
+            <p className="!mt-0 break-words text-sm font-medium">A4 Layout</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">3 x 3 Karten pro Seite, mit Schnittmarken.</p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <QrCode className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-              <h3 className="font-medium mb-1">Karten generieren</h3>
-              <p className="text-sm text-slate-600 mb-3">
-                {spiele.length} Spiele bereit
-              </p>
-              <Button 
-                onClick={generateAllKarten}
-                disabled={isGenerating || spiele.length === 0}
-                className="w-full"
-              >
-                {isGenerating ? 'Generiere...' : 'ZIP herunterladen'}
-                <Download className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <Camera className="h-8 w-8 mx-auto mb-2 text-green-600" />
-              <h3 className="font-medium mb-1">📱 QR-Scanner</h3>
-              <p className="text-sm text-slate-600 mb-3">
-                Punkte eintragen
-              </p>
-              <Button 
-                onClick={startScanner}
-                variant="outline"
-                className="w-full"
-              >
-                QR-Scanner starten
-                <Scan className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-
-            <div className="text-center p-4 bg-amber-50 rounded-lg">
-              <Badge variant="outline" className="mb-2">
-                {spiele.length} Spiele
-              </Badge>
-              <h3 className="font-medium mb-1">Spielübersicht</h3>
-              <p className="text-sm text-slate-600">
-                Karten für alle geplanten Spiele
-              </p>
-            </div>
+          <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
+            <QrCode className="mb-3 size-5 text-[#5e6d35]" />
+            <p className="!mt-0 break-words text-sm font-medium">App-Code</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Kein Weblink: Der Code funktioniert im Admin/PWA-Scanner.</p>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Anleitung und Features */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5" />
-            Wie funktioniert das Schiedsrichterkarten-System?
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold mb-3 text-green-700">📝 Karten erstellen</h3>
-              <ol className="text-sm space-y-2 text-slate-600">
-                <li>1. <strong>PNG-Template:</strong> Handball-Spielnotizkarte (8x12cm, Hochformat) wird automatisch mit Teamnamen in "Verein/Trikotfarbe" befüllt</li>
-                <li>2. <strong>Feld & Zeit:</strong> Werden in "Besondere Vorkommnisse" eingetragen</li>
-                <li>3. <strong>QR-Code:</strong> Eindeutige Spiel-ID wird als 2D-Matrix-Code unten rechts eingefügt</li>
-                <li>4. <strong>ZIP-Export:</strong> Alle Karten werden als PNG-Dateien in einem ZIP-Archiv heruntergeladen</li>
-              </ol>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3 text-blue-700">📱 QR-Code scannen</h3>
-              <ol className="text-sm space-y-2 text-slate-600">
-                <li>1. <strong>Automatisches Scannen:</strong> QR-Codes werden automatisch erkannt</li>
-                <li>2. <strong>Spiel auswählen:</strong> Wählen Sie das richtige Spiel aus der Liste</li>
-                <li>3. <strong>Punkte eingeben:</strong> Tore für beide Teams eingeben</li>
-                <li>4. <strong>Automatische Speicherung:</strong> Direkt in die Ergebnistabelle</li>
-              </ol>
-            </div>
-          </div>
-          
-          <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-            <div className="flex items-start gap-3">
-              <div className="p-1 bg-amber-200 rounded">
-                <AlertCircle className="h-4 w-4 text-amber-700" />
-              </div>
-              <div>
-                <h4 className="font-medium text-amber-800 mb-1">Wichtige Hinweise</h4>
-                <ul className="text-sm text-amber-700 space-y-1">
-                  <li>• Die Handball-Spielnotizkarte hat das Format 8cm x 12cm (Hochformat)</li>
-                  <li>• Großer 2D Matrix QR-Code (200px) für einfaches Scannen</li>
-                  <li>• 🤖 Automatisches Scannen: QR-Codes werden sofort erkannt</li>
-                  <li>• Korrekte Team-Namen: Jedes Spiel hat die echten Team-Namen</li>
-                  <li>• Jeder QR-Code ist einzigartig und verhindert Verwechslungen</li>
-                  <li>• Funktioniert auch bei schlechten Lichtverhältnissen</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Spiele-Liste mit Vorschau */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Einzelne Karten-Vorschau</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {spiele.slice(0, 6).map((spiel) => (
-              <div key={spiel.id} className="border rounded-lg p-3">
-                <div className="text-sm font-medium mb-1">
-                  {spiel.team1} vs {spiel.team2}
-                </div>
-                <div className="text-xs text-slate-600 mb-2">
-                  {spiel.datum} • {spiel.zeit} • {spiel.feld}
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => showKartenPreview(spiel)}
-                  className="w-full"
-                >
-                  Vorschau
-                </Button>
-              </div>
-            ))}
-          </div>
-          {spiele.length > 6 && (
-            <p className="text-sm text-slate-500 mt-4 text-center">
-              ... und {spiele.length - 6} weitere Spiele
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Vorschau Dialog */}
-      <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Karten-Vorschau</DialogTitle>
-            <DialogDescription>
-              {previewSpiel && `${previewSpiel.team1} vs ${previewSpiel.team2}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-center">
-            <canvas 
-              ref={canvasRef}
-              className="border max-w-full h-auto"
-              style={{ maxHeight: '600px' }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPreview(false)}>
-              Schließen
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* QR-Scanner Modal (in Website integriert) */}
-      {isScanning && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-            {/* Modal Header */}
-            <div className="p-6 border-b">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    📱 QR-Code Scanner
-                    <Badge variant="outline" className="text-xs">2D Matrix</Badge>
-                  </h2>
-                </div>
-                <Button variant="ghost" size="sm" onClick={stopScanner}>
-                  ✕
-                </Button>
-              </div>
-              <p className="text-slate-600 mt-2">
-                Richten Sie die Kamera auf den großen QR-Code der Schiedsrichterkarte
-              </p>
-            </div>
-
-            {/* Scanner Bereich */}
-            <div className="p-6">
-              <div className="flex justify-center mb-4">
-                <div className="relative">
-                  <video 
-                    ref={videoRef}
-                    className="border-2 border-gray-300 rounded-lg shadow-lg"
-                    style={{ width: '100%', maxWidth: '600px', height: 'auto' }}
-                  />
-                  {/* QR-Code Zielbereich - größer und prominenter */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="border-4 border-green-400 border-dashed w-48 h-48 rounded-lg bg-green-100 bg-opacity-30 animate-pulse">
-                      <div className="flex items-center justify-center h-full">
-                        <QrCode className="h-12 w-12 text-green-600" />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Scanner-Ecken */}
-                  <div className="absolute top-4 left-4 w-8 h-8 border-l-4 border-t-4 border-green-500"></div>
-                  <div className="absolute top-4 right-4 w-8 h-8 border-r-4 border-t-4 border-green-500"></div>
-                  <div className="absolute bottom-4 left-4 w-8 h-8 border-l-4 border-b-4 border-green-500"></div>
-                  <div className="absolute bottom-4 right-4 w-8 h-8 border-r-4 border-b-4 border-green-500"></div>
-                </div>
-              </div>
-              
-              {/* Hinweise */}
-              <div className="text-center space-y-2 mb-6">
-                <p className="text-sm text-slate-600">
-                  💡 Positionieren Sie den QR-Code im grünen Rahmen
-                </p>
-                <p className="text-xs text-slate-400">
-                  Halten Sie die Karte etwa 20-30cm vom Bildschirm entfernt
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex justify-center gap-4">
-                <Button 
-                  variant="outline" 
-                  onClick={stopScanner}
-                  className="px-6"
-                >
-                  ❌ Scanner beenden
-                </Button>
-                {!scanningActive ? (
-                  <Button 
-                    onClick={() => setScanningActive(true)}
-                    className="bg-green-600 hover:bg-green-700 px-6"
-                  >
-                    � Automatisches Scannen starten
-                  </Button>
-                ) : (
-                  <Button 
-                    onClick={scanQRCode} 
-                    className="bg-blue-600 hover:bg-blue-700 px-6"
-                  >
-                    📱 Manuell scannen
-                  </Button>
-                )}
-              </div>
-
-              {/* Status Anzeige */}
-              <div className={`mt-6 p-4 rounded-lg border-l-4 ${scanningActive ? 'bg-green-50 border-green-400' : 'bg-blue-50 border-blue-400'}`}>
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${scanningActive ? 'bg-green-400 animate-pulse' : 'bg-blue-400'}`}></div>
-                  <span className={`text-sm font-medium ${scanningActive ? 'text-green-800' : 'text-blue-800'}`}>
-                    {scanningActive ? '🤖 Automatisches Scannen aktiv - QR-Codes werden erkannt' : '📷 Kamera aktiv - Bereit für manuelles Scannen'}
-                  </span>
-                </div>
-                <p className={`text-xs mt-1 ${scanningActive ? 'text-green-600' : 'text-blue-600'}`}>
-                  {scanningActive 
-                    ? 'Halten Sie den QR-Code in den grünen Rahmen - automatische Erkennung läuft...' 
-                    : 'Klicken Sie "Manuell scannen" oder aktivieren Sie das automatische Scannen'
-                  }
-                </p>
-              </div>
-            </div>
+          <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
+            <p className="!mt-0 break-words text-sm font-medium">Handy-Eingabe</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Scan öffnet den rechten Ergebnisbereich.</p>
           </div>
         </div>
-      )}
-    </div>
+        <div className="grid min-w-0 gap-3">
+          <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-3">
+            <p className="!mt-0 break-words text-sm font-medium">Logo oben rechts</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">
+              {uploadedLogo ? uploadedLogo.name : "Optionales Logo für jede Karte hochladen."}
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row xl:flex-col">
+              <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-center text-sm font-medium leading-5 transition-colors hover:bg-accent">
+                <Upload className="size-4" />
+                <span className="min-w-0 break-words">Logo hochladen</span>
+                <input type="file" accept="image/*" onChange={handleLogoUpload} className="sr-only" />
+              </label>
+              {uploadedLogo && (
+                <Button type="button" variant="ghost" size="sm" onClick={removeLogo} className="h-auto min-h-8 whitespace-normal text-muted-foreground">
+                  <X className="size-4" />
+                  Logo entfernen
+                </Button>
+              )}
+            </div>
+          </div>
+          <Button
+            type="button"
+            disabled={isGenerating || playableGames.length === 0}
+            onClick={generateA4Cards}
+            className="h-auto min-h-9 w-full whitespace-normal bg-[#5e6d35] text-white hover:bg-[#4f5d2f]"
+          >
+            <FileText className="size-4" />
+            <span className="min-w-0 break-words">{isGenerating ? "PDF wird erstellt..." : "A4 Karten-PDF erstellen"}</span>
+          </Button>
+        </div>
+      </CardContent>
+    </>
   );
+
+  if (embedded) {
+    return <div className="min-w-0 overflow-hidden">{content}</div>;
+  }
+
+  return (
+    <Card className="min-w-0 overflow-hidden rounded-[8px] px-6">
+      {content}
+    </Card>
+  );
+}
+
+function prepareLogo(file: File) {
+  return new Promise<UploadedLogo>((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      try {
+        const maxSize = 420;
+        const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        if (!context) {
+          reject(new Error("Logo konnte nicht gelesen werden"));
+          return;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(image, 0, 0, width, height);
+        resolve({
+          dataUrl: canvas.toDataURL("image/png"),
+          name: file.name,
+          aspectRatio: width / height,
+        });
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Logo konnte nicht geladen werden"));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+async function createScoreCodes(spielIds: string[]) {
+  const response = await fetch("/api/schiedsrichterkarten", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "create_score_codes",
+      spielIds,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || "Karten-Codes konnten nicht erstellt werden");
+  }
+
+  return (data.codes || []) as ScoreCode[];
+}
+
+function drawCard(
+  doc: jsPDF,
+  spiel: Spiel,
+  qrDataUrl: string,
+  logo: UploadedLogo | null,
+  x: number,
+  y: number,
+  index: number,
+  turnierName: string
+) {
+  doc.setDrawColor(40);
+  doc.setLineWidth(0.25);
+  doc.rect(x, y, CARD_WIDTH, CARD_HEIGHT);
+
+  doc.setFillColor(246, 247, 241);
+  doc.rect(x, y, CARD_WIDTH, 7.2, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.9);
+  doc.text("Schiedsrichterkarte", x + 2.5, y + 3.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4.4);
+  const logoBox = getLogoBox(logo, x + CARD_WIDTH - 11.4, y + 0.9, 8.9, 5.4);
+  const headerRight = logo ? logoBox.x - 1.6 : x + CARD_WIDTH - 2.5;
+  doc.text(`Nr. ${index}`, headerRight, y + 3.5, { align: "right" });
+  doc.text(trimText(doc, turnierName, headerRight - x - 2.5), x + 2.5, y + 6.2);
+
+  if (logo) {
+    doc.addImage(logo.dataUrl, "PNG", logoBox.x, logoBox.y, logoBox.width, logoBox.height);
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4.6);
+  const qrX = x + CARD_WIDTH - QR_SIZE - 2.5;
+  const qrY = y + QR_Y;
+  const infoWidth = CARD_WIDTH - QR_SIZE - 9;
+  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), x + 2.5, y + 10.4);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.8);
+  doc.text(trimText(doc, spiel.feld, infoWidth), x + 2.5, y + 12.9);
+
+  doc.addImage(qrDataUrl, "PNG", qrX, qrY, QR_SIZE, QR_SIZE);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(3.2);
+  doc.text("Scan", qrX + QR_SIZE / 2, qrY + QR_SIZE + 1.4, { align: "center" });
+
+  drawTeamBox(doc, x + 2.5, y + TEAM_ONE_Y, CARD_WIDTH - 5, spiel.team1, "Team 1");
+  drawTeamBox(doc, x + 2.5, y + TEAM_TWO_Y, CARD_WIDTH - 5, spiel.team2, "Team 2");
+
+  drawGoalStrikeList(doc, x + 2.5, y + GOAL_STRIKE_Y, CARD_WIDTH - 5);
+}
+
+function getLogoBox(
+  logo: UploadedLogo | null,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number
+) {
+  if (!logo) {
+    return { x, y, width: maxWidth, height: maxHeight };
+  }
+
+  const aspectRatio = Number.isFinite(logo.aspectRatio) && logo.aspectRatio > 0 ? logo.aspectRatio : 1;
+  let width = maxWidth;
+  let height = width / aspectRatio;
+
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height * aspectRatio;
+  }
+
+  return {
+    x: x + maxWidth - width,
+    y: y + (maxHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
+function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: string, label: string) {
+  doc.setDrawColor(80);
+  doc.setLineWidth(0.15);
+  doc.rect(x, y, width, 5.1);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(3.4);
+  doc.text(label, x + 1.5, y + 1.9);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(4.8);
+  doc.text(trimText(doc, teamName, width - 3), x + 1.5, y + 4.5);
+}
+
+function drawGoalStrikeList(doc: jsPDF, x: number, y: number, width: number) {
+  const teamWidth = (width - GOAL_GRID_GAP) / 2;
+
+  drawGoalGrid(doc, x, y, teamWidth, "T1");
+  drawGoalGrid(doc, x + teamWidth + GOAL_GRID_GAP, y, teamWidth, "T2");
+}
+
+function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: string) {
+  const columns = GOAL_GRID_COLUMNS;
+  const cellWidth = width / columns;
+  const cellHeight = GOAL_GRID_CELL_HEIGHT;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.4);
+  doc.text(label, x, y - 1.1);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(5.4);
+  doc.setDrawColor(80);
+  doc.setLineWidth(0.14);
+
+  for (let goal = 1; goal <= 30; goal++) {
+    const zeroBased = goal - 1;
+    const column = zeroBased % columns;
+    const row = Math.floor(zeroBased / columns);
+    const cellX = x + column * cellWidth;
+    const cellY = y + row * cellHeight;
+
+    doc.rect(cellX, cellY, cellWidth, cellHeight);
+    doc.text(String(goal), cellX + cellWidth / 2, cellY + 6.2, { align: "center" });
+  }
+}
+
+function addCutMarks(doc: jsPDF) {
+  const pageTotal = doc.getNumberOfPages();
+
+  for (let page = 1; page <= pageTotal; page++) {
+    doc.setPage(page);
+    doc.setDrawColor(180);
+    doc.setLineWidth(0.1);
+
+    for (let column = 1; column < CARD_COLUMNS; column++) {
+      const cutX = PAGE_MARGIN + column * CARD_WIDTH + (column - 0.5) * CARD_GAP;
+      doc.line(cutX, PAGE_MARGIN - 2, cutX, PAGE_MARGIN);
+      doc.line(cutX, PAGE_HEIGHT - PAGE_MARGIN, cutX, PAGE_HEIGHT - PAGE_MARGIN + 2);
+    }
+
+    for (let row = 1; row < CARD_ROWS; row++) {
+      const cutY = PAGE_MARGIN + row * CARD_HEIGHT + (row - 0.5) * CARD_GAP;
+      doc.line(PAGE_MARGIN - 2, cutY, PAGE_MARGIN, cutY);
+      doc.line(PAGE_WIDTH - PAGE_MARGIN, cutY, PAGE_WIDTH - PAGE_MARGIN + 2, cutY);
+    }
+  }
+}
+
+function trimText(doc: jsPDF, text: string, maxWidth: number) {
+  if (doc.getTextWidth(text) <= maxWidth) {
+    return text;
+  }
+
+  let next = text;
+
+  while (next.length > 1 && doc.getTextWidth(`${next}...`) > maxWidth) {
+    next = next.slice(0, -1);
+  }
+
+  return `${next}...`;
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-");
+
+  if (!year || !month || !day) {
+    return value;
+  }
+
+  return `${day}.${month}.${year}`;
 }

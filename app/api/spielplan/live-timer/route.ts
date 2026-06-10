@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiAuth } from '@/lib/dal';
-
-// In-memory store for live timer data (shared with live route)
-// This would be better as a Redis store in production
-let liveTimerStore: { [spielId: string]: { liveTime: string; status: string; lastUpdate: number } } = {};
+import { deleteStoredLiveTimer, getStoredLiveTimers, saveStoredLiveTimer } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   // Verify authentication
@@ -17,7 +14,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { spielId, liveTime, status } = await request.json();
+    const { spielId, liveTime, status, startTime, elapsedTime, isSecondHalf, halbzeitStartTime } = await request.json();
     
     if (!spielId) {
       return NextResponse.json(
@@ -27,17 +24,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Update live timer store - accept both 'running' and 'laufend' as valid statuses
-    if (liveTime && (status === 'running' || status === 'laufend' || status === 'halftime')) {
-      liveTimerStore[spielId] = {
+    if (liveTime && (status === 'running' || status === 'laufend' || status === 'halftime' || status === 'halbzeit')) {
+      const normalizedStatus = status === 'running' ? 'laufend' : status === 'halftime' ? 'halbzeit' : status;
+      saveStoredLiveTimer(spielId, {
         liveTime,
-        status: status === 'running' ? 'laufend' : status, // Normalize 'running' to 'laufend'
-        lastUpdate: Date.now()
-      };
+        status: normalizedStatus,
+        startTime,
+        elapsedTime,
+        isSecondHalf,
+        halbzeitStartTime,
+        lastUpdate: Date.now(),
+      });
       
       console.log(`✅ Live timer updated for game ${spielId}: ${liveTime} (${status})`);
     } else if (status === 'beendet' || status === 'finished') {
       // Remove from live store when game ends
-      delete liveTimerStore[spielId];
+      deleteStoredLiveTimer(spielId);
       console.log(`🏁 Game ${spielId} finished, removed from live timer store`);
     } else {
       console.warn(`⚠️ Invalid status for live timer: ${status} (game ${spielId})`);
@@ -59,17 +61,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    // Clean up old data (older than 5 minutes)
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    Object.keys(liveTimerStore).forEach(spielId => {
-      if (liveTimerStore[spielId].lastUpdate < fiveMinutesAgo) {
-        delete liveTimerStore[spielId];
-      }
-    });
-
     return NextResponse.json({
       success: true,
-      liveTimers: liveTimerStore
+      liveTimers: getStoredLiveTimers()
     });
 
   } catch (error) {

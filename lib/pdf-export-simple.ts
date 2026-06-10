@@ -3,6 +3,7 @@
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatScheduleCategoryLabel } from './tournament';
 
 export interface Spiel {
   id: string;
@@ -37,7 +38,7 @@ export function exportSpielplanCSV(spiele: Spiel[], config: TurnierConfig) {
       spiel.datum,
       spiel.zeit,
       spiel.feld,
-      spiel.kategorie,
+      formatScheduleCategoryLabel(spiel.kategorie),
       spiel.team1,
       spiel.team2,
       spiel.status,
@@ -68,115 +69,32 @@ export function exportSpielplanCSV(spiele: Spiel[], config: TurnierConfig) {
   }
 }
 
-// Placeholder für PDF-Export (wird später implementiert)
+const PDF_MARGIN_X = 8;
+const PDF_MARGIN_TOP = 8;
+const PDF_MARGIN_BOTTOM = 8;
+
+type PdfColor = [number, number, number];
+
+interface FieldColor {
+  fill: PdfColor;
+  text: PdfColor;
+  border: PdfColor;
+}
+
+const FIELD_COLORS: FieldColor[] = [
+  { fill: [232, 239, 215], text: [53, 64, 31], border: [94, 109, 53] },
+  { fill: [226, 238, 235], text: [31, 76, 68], border: [83, 135, 122] },
+  { fill: [238, 232, 221], text: [88, 62, 38], border: [159, 123, 82] },
+  { fill: [229, 233, 242], text: [51, 63, 92], border: [103, 119, 159] },
+  { fill: [242, 229, 229], text: [91, 52, 52], border: [154, 101, 101] },
+  { fill: [235, 232, 242], text: [67, 56, 91], border: [116, 100, 153] }
+];
+
 export function exportSimpleSpielplanPDF(spiele: Spiel[], config: TurnierConfig) {
   console.log('📄 PDF-Export wird erstellt...');
   
   try {
-    // Neues PDF-Dokument erstellen (Querformat)
-    const doc = new jsPDF('landscape', 'mm', 'a4');
-    
-    // Hilfsfunktion für deutsches Datumsformat
-    const formatGermanDate = (dateString: string) => {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('de-DE', {
-        weekday: 'short',
-        day: '2-digit',
-        month: '2-digit'
-      });
-    };
-    
-    // Spiele nach Feldern gruppieren
-    const spieleNachFeld = spiele.reduce((acc: { [key: string]: Spiel[] }, spiel) => {
-      if (!acc[spiel.feld]) {
-        acc[spiel.feld] = [];
-      }
-      acc[spiel.feld].push(spiel);
-      return acc;
-    }, {});
-    
-    const felder = Object.keys(spieleNachFeld).sort();
-    
-    felder.forEach((feld, feldIndex) => {
-      // Neue Seite für jedes Feld (außer beim ersten)
-      if (feldIndex > 0) {
-        doc.addPage();
-      }
-      
-      // Titel und Header für das Feld
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${config.turnierName} - ${feld}`, 148, 15, { align: 'center' });
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Spielplan vom ${formatGermanDate(config.turnierStartDatum)} bis ${formatGermanDate(config.turnierEndDatum)}`, 148, 22, { align: 'center' });
-      
-      // Infos kompakter
-      doc.setFontSize(8);
-      doc.text(`Startgeld: ${config.startgeld}€ | Schiri: ${config.schiriGeld}€`, 20, 30);
-      doc.text(`Erstellt: ${new Date().toLocaleDateString('de-DE')} | Spiele: ${spieleNachFeld[feld].length}`, 200, 30);
-      
-      // Spiele für dieses Feld nach Datum und Zeit sortieren
-      const sortierteSpiele = spieleNachFeld[feld].sort((a, b) => {
-        const dateTimeA = new Date(`${a.datum} ${a.zeit}`);
-        const dateTimeB = new Date(`${b.datum} ${b.zeit}`);
-        return dateTimeA.getTime() - dateTimeB.getTime();
-      });
-      
-      // Tabellendaten vorbereiten mit deutschem Datumsformat
-      const tableData = sortierteSpiele.map(spiel => [
-        formatGermanDate(spiel.datum),
-        spiel.zeit,
-        spiel.kategorie,
-        spiel.team1,
-        spiel.team2,
-        spiel.status,
-        spiel.ergebnis || '-'
-      ]);
-      
-      // Tabelle erstellen mit autoTable - kompakter für mehr Spiele pro Seite
-      autoTable(doc, {
-        startY: 38,
-        head: [['Datum', 'Zeit', 'Kategorie', 'Team 1', 'Team 2', 'Status', 'Ergebnis']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: {
-          fillColor: [66, 139, 202],
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          fontSize: 9
-        },
-        bodyStyles: {
-          fontSize: 8,
-          cellPadding: 1.5,
-          lineColor: [200, 200, 200],
-          lineWidth: 0.1
-        },
-        columnStyles: {
-          0: { cellWidth: 22 }, // Datum
-          1: { cellWidth: 18 }, // Zeit
-          2: { cellWidth: 30 }, // Kategorie
-          3: { cellWidth: 55 }, // Team 1
-          4: { cellWidth: 55 }, // Team 2
-          5: { cellWidth: 22 }, // Status
-          6: { cellWidth: 25 }  // Ergebnis
-        },
-        margin: { left: 15, right: 15 },
-        tableWidth: 'auto',
-        showHead: 'everyPage',
-        pageBreak: 'avoid',
-        didDrawPage: function(data: any) {
-          // Seitenzahl und Feld-Info hinzufügen
-          const pageSize = doc.internal.pageSize;
-          doc.setFontSize(7);
-          doc.text(`${feld} - Seite ${feldIndex + 1}/${felder.length}`, 
-            pageSize.width - 60, pageSize.height - 8);
-        }
-      });
-    });
-    
-    // PDF herunterladen
+    const doc = createSpielplanPdf(spiele, config);
     const fileName = `Spielplan_${config.turnierName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(fileName);
     
@@ -187,115 +105,11 @@ export function exportSimpleSpielplanPDF(spiele: Spiel[], config: TurnierConfig)
   }
 }
 
-// Placeholder für PDF-Vorschau (wird später implementiert)
 export function previewSpielplanPDF(spiele: Spiel[], config: TurnierConfig) {
   console.log('👁️ PDF-Vorschau wird erstellt...');
   
   try {
-    // Neues PDF-Dokument erstellen (Querformat)
-    const doc = new jsPDF('landscape', 'mm', 'a4');
-    
-    // Hilfsfunktion für deutsches Datumsformat
-    const formatGermanDate = (dateString: string) => {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('de-DE', {
-        weekday: 'short',
-        day: '2-digit',
-        month: '2-digit'
-      });
-    };
-    
-    // Spiele nach Feldern gruppieren
-    const spieleNachFeld = spiele.reduce((acc: { [key: string]: Spiel[] }, spiel) => {
-      if (!acc[spiel.feld]) {
-        acc[spiel.feld] = [];
-      }
-      acc[spiel.feld].push(spiel);
-      return acc;
-    }, {});
-    
-    const felder = Object.keys(spieleNachFeld).sort();
-    
-    felder.forEach((feld, feldIndex) => {
-      // Neue Seite für jedes Feld (außer beim ersten)
-      if (feldIndex > 0) {
-        doc.addPage();
-      }
-      
-      // Titel und Header für das Feld
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${config.turnierName} - ${feld}`, 148, 15, { align: 'center' });
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Spielplan vom ${formatGermanDate(config.turnierStartDatum)} bis ${formatGermanDate(config.turnierEndDatum)}`, 148, 22, { align: 'center' });
-      
-      // Infos kompakter
-      doc.setFontSize(8);
-      doc.text(`Startgeld: ${config.startgeld}€ | Schiri: ${config.schiriGeld}€`, 20, 30);
-      doc.text(`Erstellt: ${new Date().toLocaleDateString('de-DE')} | Spiele: ${spieleNachFeld[feld].length}`, 200, 30);
-      
-      // Spiele für dieses Feld nach Datum und Zeit sortieren
-      const sortierteSpiele = spieleNachFeld[feld].sort((a, b) => {
-        const dateTimeA = new Date(`${a.datum} ${a.zeit}`);
-        const dateTimeB = new Date(`${b.datum} ${b.zeit}`);
-        return dateTimeA.getTime() - dateTimeB.getTime();
-      });
-      
-      // Tabellendaten vorbereiten mit deutschem Datumsformat
-      const tableData = sortierteSpiele.map(spiel => [
-        formatGermanDate(spiel.datum),
-        spiel.zeit,
-        spiel.kategorie,
-        spiel.team1,
-        spiel.team2,
-        spiel.status,
-        spiel.ergebnis || '-'
-      ]);
-      
-      // Tabelle erstellen mit autoTable - kompakter für mehr Spiele pro Seite
-      autoTable(doc, {
-        startY: 38,
-        head: [['Datum', 'Zeit', 'Kategorie', 'Team 1', 'Team 2', 'Status', 'Ergebnis']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: {
-          fillColor: [66, 139, 202],
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          fontSize: 9
-        },
-        bodyStyles: {
-          fontSize: 8,
-          cellPadding: 1.5,
-          lineColor: [200, 200, 200],
-          lineWidth: 0.1
-        },
-        columnStyles: {
-          0: { cellWidth: 22 }, // Datum
-          1: { cellWidth: 18 }, // Zeit
-          2: { cellWidth: 30 }, // Kategorie
-          3: { cellWidth: 55 }, // Team 1
-          4: { cellWidth: 55 }, // Team 2
-          5: { cellWidth: 22 }, // Status
-          6: { cellWidth: 25 }  // Ergebnis
-        },
-        margin: { left: 15, right: 15 },
-        tableWidth: 'auto',
-        showHead: 'everyPage',
-        pageBreak: 'avoid',
-        didDrawPage: function(data: any) {
-          // Seitenzahl und Feld-Info hinzufügen
-          const pageSize = doc.internal.pageSize;
-          doc.setFontSize(7);
-          doc.text(`${feld} - Seite ${feldIndex + 1}/${felder.length}`, 
-            pageSize.width - 60, pageSize.height - 8);
-        }
-      });
-    });
-    
-    // PDF in neuem Tab öffnen (Vorschau)
+    const doc = createSpielplanPdf(spiele, config);
     const pdfBlob = doc.output('blob');
     const blobUrl = URL.createObjectURL(pdfBlob);
     window.open(blobUrl, '_blank');
@@ -305,4 +119,257 @@ export function previewSpielplanPDF(spiele: Spiel[], config: TurnierConfig) {
     console.error('❌ Fehler bei PDF-Vorschau:', error);
     throw error;
   }
+}
+
+function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
+  const doc = new jsPDF('landscape', 'mm', 'a4');
+  const spieleNachTagUndFeld = groupGamesByDayAndField(spiele);
+  const tage = Object.keys(spieleNachTagUndFeld).sort(sortDates);
+  const fieldColors = createFieldColorMap(spiele);
+
+  if (tage.length === 0) {
+    drawEmptySpielplanPage(doc, config);
+    return doc;
+  }
+
+  let hasRenderedPage = false;
+
+  tage.forEach((tag) => {
+    const dayTitle = formatGermanDayTitle(tag);
+    const fields = Object.keys(spieleNachTagUndFeld[tag]).sort((a, b) => a.localeCompare(b, 'de-DE', { numeric: true }));
+
+    fields.forEach((feld) => {
+      if (hasRenderedPage) {
+        doc.addPage();
+      }
+
+      hasRenderedPage = true;
+
+      const fieldGames = spieleNachTagUndFeld[tag][feld];
+      const fieldColor = fieldColors.get(feld) || FIELD_COLORS[0];
+
+      const pageWidth = getPageWidth(doc);
+      const availableWidth = pageWidth - PDF_MARGIN_X * 2;
+      const timeWidth = 20;
+      const categoryWidth = 50;
+      const resultWidth = 28;
+      const teamWidth = (availableWidth - timeWidth - categoryWidth - resultWidth) / 2;
+
+      const tableData = [...fieldGames]
+        .sort(sortGamesByDateTime)
+        .map(spiel => [
+          spiel.zeit,
+          cleanCategoryLabel(spiel.kategorie),
+          spiel.team1,
+          spiel.team2,
+          formatResult(spiel.ergebnis)
+        ]);
+
+      autoTable(doc, {
+        startY: 38,
+        head: [['Zeit', 'Kategorie', 'Team 1', 'Team 2', 'Ergebnis']],
+        body: tableData,
+        theme: 'grid',
+        margin: { top: 38, left: PDF_MARGIN_X, right: PDF_MARGIN_X, bottom: PDF_MARGIN_BOTTOM },
+        tableWidth: availableWidth,
+        showHead: 'everyPage',
+        styles: {
+          font: 'helvetica',
+          fontSize: 8.5,
+          cellPadding: { top: 1.7, right: 1.9, bottom: 1.7, left: 1.9 },
+          lineColor: fieldColor.border,
+          lineWidth: 0.1,
+          overflow: 'linebreak',
+          valign: 'middle',
+          textColor: [42, 45, 33]
+        },
+        headStyles: {
+          fillColor: fieldColor.border,
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8.9,
+          halign: 'left'
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          minCellHeight: 6.6
+        },
+        alternateRowStyles: {
+          fillColor: fieldColor.fill
+        },
+        columnStyles: {
+          0: { cellWidth: timeWidth, halign: 'center' },
+          1: { cellWidth: categoryWidth },
+          2: { cellWidth: teamWidth },
+          3: { cellWidth: teamWidth },
+          4: { cellWidth: resultWidth, halign: 'center' }
+        },
+        willDrawPage: function() {
+          drawSpielplanHeader(doc, config, dayTitle, feld, fieldGames.length, fieldColor);
+        },
+        didDrawPage: function() {
+          drawSpielplanFooter(doc, `${dayTitle} | ${feld}`);
+        }
+      });
+    });
+  });
+
+  return doc;
+}
+
+function groupGamesByDayAndField(spiele: Spiel[]) {
+  return spiele.reduce<Record<string, Record<string, Spiel[]>>>((acc, spiel) => {
+    const tag = spiel.datum || 'Ohne Datum';
+    const feld = spiel.feld || 'Ohne Feld';
+    acc[tag] ??= {};
+    acc[tag][feld] ??= [];
+    acc[tag][feld].push(spiel);
+    return acc;
+  }, {});
+}
+
+function createFieldColorMap(spiele: Spiel[]) {
+  const fields = Array.from(new Set(spiele.map(spiel => spiel.feld || 'Ohne Feld'))).sort((a, b) =>
+    a.localeCompare(b, 'de-DE', { numeric: true })
+  );
+
+  return fields.reduce<Map<string, FieldColor>>((map, field, index) => {
+    map.set(field, FIELD_COLORS[index % FIELD_COLORS.length]);
+    return map;
+  }, new Map());
+}
+
+function drawSpielplanHeader(
+  doc: jsPDF,
+  config: TurnierConfig,
+  dayTitle: string,
+  feld: string,
+  gameCount: number,
+  fieldColor: FieldColor = FIELD_COLORS[0]
+) {
+  const pageWidth = getPageWidth(doc);
+  const createdAt = new Date().toLocaleDateString('de-DE');
+
+  doc.setFillColor(248, 249, 244);
+  doc.rect(0, 0, pageWidth, 30, 'F');
+  doc.setDrawColor(214, 216, 204);
+  doc.line(PDF_MARGIN_X, 30, pageWidth - PDF_MARGIN_X, 30);
+
+  doc.setTextColor(53, 64, 31);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text(config.turnierName, PDF_MARGIN_X, PDF_MARGIN_TOP + 3);
+
+  doc.setFontSize(11);
+  doc.text(dayTitle, PDF_MARGIN_X, PDF_MARGIN_TOP + 10);
+
+  doc.setFillColor(fieldColor.fill[0], fieldColor.fill[1], fieldColor.fill[2]);
+  doc.setDrawColor(fieldColor.border[0], fieldColor.border[1], fieldColor.border[2]);
+  doc.rect(pageWidth - PDF_MARGIN_X - 44, PDF_MARGIN_TOP + 4, 44, 9, 'FD');
+  doc.setTextColor(fieldColor.text[0], fieldColor.text[1], fieldColor.text[2]);
+  doc.setFontSize(8.5);
+  doc.text(feld, pageWidth - PDF_MARGIN_X - 22, PDF_MARGIN_TOP + 10.2, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.2);
+  doc.setTextColor(88, 92, 74);
+  doc.text(
+    `Spielplan ${formatGermanDate(config.turnierStartDatum)} bis ${formatGermanDate(config.turnierEndDatum)}`,
+    PDF_MARGIN_X,
+    PDF_MARGIN_TOP + 17
+  );
+
+  doc.text(`Erstellt: ${createdAt} | Spiele: ${gameCount}`, pageWidth - PDF_MARGIN_X, PDF_MARGIN_TOP + 17, {
+    align: 'right'
+  });
+}
+
+function drawEmptySpielplanPage(doc: jsPDF, config: TurnierConfig) {
+  drawSpielplanHeader(doc, config, 'Keine Spiele vorhanden', 'Ohne Feld', 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(88, 92, 74);
+  doc.text('Es sind noch keine Spiele für den Druck vorhanden.', PDF_MARGIN_X, 45);
+}
+
+function drawSpielplanFooter(doc: jsPDF, feld: string) {
+  const pageWidth = getPageWidth(doc);
+  const pageHeight = getPageHeight(doc);
+  const pageNumber = (doc.internal as any).getCurrentPageInfo?.().pageNumber || doc.getNumberOfPages();
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(112, 116, 96);
+  doc.text(feld, PDF_MARGIN_X, pageHeight - 4);
+  doc.text(`Seite ${pageNumber}`, pageWidth - PDF_MARGIN_X, pageHeight - 4, { align: 'right' });
+}
+
+function formatGermanDate(dateString: string) {
+  const date = parseLocalDate(dateString);
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit'
+  });
+}
+
+function formatGermanDayTitle(dateString: string) {
+  if (dateString === 'Ohne Datum') {
+    return dateString;
+  }
+
+  const date = parseLocalDate(dateString);
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+function cleanCategoryLabel(category: string) {
+  return formatScheduleCategoryLabel(category);
+}
+
+function formatResult(result: string | undefined) {
+  const trimmed = result?.trim() || '';
+  return trimmed === '-' || trimmed === '-:-' ? '' : trimmed;
+}
+
+function sortGamesByDateTime(a: Spiel, b: Spiel) {
+  return `${a.datum} ${a.zeit} ${a.feld}`.localeCompare(`${b.datum} ${b.zeit} ${b.feld}`, 'de-DE', {
+    numeric: true
+  });
+}
+
+function sortDates(a: string, b: string) {
+  if (a === 'Ohne Datum') {
+    return 1;
+  }
+
+  if (b === 'Ohne Datum') {
+    return -1;
+  }
+
+  return a.localeCompare(b);
+}
+
+function parseLocalDate(dateString: string) {
+  const [year, month, day] = dateString.split('-').map(Number);
+
+  if (year && month && day) {
+    return new Date(year, month - 1, day);
+  }
+
+  return new Date(dateString);
+}
+
+function getPageWidth(doc: jsPDF) {
+  const pageSize = doc.internal.pageSize as any;
+  return typeof pageSize.getWidth === 'function' ? pageSize.getWidth() : pageSize.width;
+}
+
+function getPageHeight(doc: jsPDF) {
+  const pageSize = doc.internal.pageSize as any;
+  return typeof pageSize.getHeight === 'function' ? pageSize.getHeight() : pageSize.height;
 }

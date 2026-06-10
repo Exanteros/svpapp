@@ -43,6 +43,11 @@ logs
 
 # Runtime data
 *.tgz
+*.sqlite
+*.sqlite-*
+sessions.json
+data/
+sessions/
 
 # Yarn Integrity file
 .yarn-integrity
