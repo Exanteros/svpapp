@@ -104,7 +104,7 @@ fi
 sleep 5
 
 log "🏥 Running health check..."
-HEALTH_CHECK_URL="http://localhost:3000/api/health"
+HEALTH_CHECK_URL="http://127.0.0.1:3000/api/health"
 HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_CHECK_URL || echo "000")
 
 if [ "$HEALTH_RESPONSE" = "200" ]; then

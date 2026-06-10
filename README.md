@@ -74,6 +74,8 @@ docker compose --env-file .env.docker up -d --build
 
 Wenn mehrere Next.js-Apps parallel laufen, darf jede App intern Port `3000` verwenden. Nur der Host-Port muss eindeutig sein. Hinter Traefik, Nginx Proxy Manager oder einem anderen Docker-Reverse-Proxy ist daher `--no-publish --network <proxy-netzwerk>` meist die richtige Variante; der Proxy leitet dann auf `svpapp:3000`.
 
+Für hostbasiertes Nginx mit `/etc/nginx/sites-enabled` liegen fertige Dateien unter `nginx/sites-enabled/`. In diesem Modus SVP z.B. mit `./docker-run.sh --bind 127.0.0.1 --port 3001 --app-url https://rasenturnier.sv-puschendorf.de` starten und Nginx auf `127.0.0.1:3001` proxyen lassen.
+
 ## 📧 E-Mail-Konfiguration
 
 Die Anwendung verwendet Ethereal Email für Entwicklung. Für Produktion:
