@@ -164,7 +164,8 @@ export function createTeamDisplayNameMap(teamNames: Array<string | TeamDisplayNa
   entries.forEach((entry) => {
     const baseKey = getTeamDisplayKey(entry.teamName);
     const categoryKey = getTeamDisplayCategoryKey(entry);
-    const groupKey = `${baseKey}:${categoryKey}`;
+    const qualifierKey = normalizeTeamDisplayKey(getTeamDisplayQualifier(entry));
+    const groupKey = `${baseKey}:${categoryKey}:${qualifierKey}`;
     const group = groupedByBaseAndCategory.get(groupKey) || [];
 
     group.push(entry);
@@ -178,11 +179,14 @@ export function createTeamDisplayNameMap(teamNames: Array<string | TeamDisplayNa
 
     sortedEntries.forEach((entry, index) => {
       const baseName = getTeamDisplayBaseName(entry.teamName);
-      const displayName = sortedEntries.length > 1
-        ? `${baseName} ${index + 1}`
-        : baseName;
+      const qualifier = getTeamDisplayQualifier(entry);
+      const displayNameParts = [baseName, qualifier].filter(Boolean);
 
-      displayNames.set(entry.teamName, displayName);
+      if (sortedEntries.length > 1) {
+        displayNameParts.push(String(index + 1));
+      }
+
+      displayNames.set(entry.teamName, displayNameParts.join(' '));
     });
   });
 
@@ -238,12 +242,44 @@ function getTeamDisplayCategoryKey(entry: TeamDisplayNameEntry) {
   return normalizeTeamDisplayKey(category || getTeamDisplayCategoryName(entry.teamName));
 }
 
+function getTeamDisplayQualifier(entry: TeamDisplayNameEntry) {
+  return getEJugendDisplayCode(entry);
+}
+
 function getTeamDisplayCategoryName(teamName: string) {
   const normalizedName = normalizeTeamDisplayInput(teamName);
   const nameWithoutNumber = normalizedName.replace(TEAM_NUMBER_SUFFIX_PATTERN, '').trim();
   const categoryMatch = nameWithoutNumber.match(TEAM_CATEGORY_SUFFIX_PATTERN);
 
   return categoryMatch?.[0]?.trim() || '';
+}
+
+function getEJugendDisplayCode(entry: TeamDisplayNameEntry) {
+  const teamCategory = getTeamDisplayCategoryName(entry.teamName);
+  const categoryText = normalizeTeamDisplayInput(`${teamCategory} ${entry.category || ''}`);
+  const categoryKey = normalizeTeamDisplayKey(categoryText);
+
+  if (!isEJugendDisplayKey(categoryKey)) {
+    return '';
+  }
+
+  if (hasDisplayToken(categoryKey, ['weiblich', 'we', 'w e'])) {
+    return 'wE';
+  }
+
+  if (hasDisplayToken(categoryKey, ['mannlich', 'maennlich', 'me', 'm e'])) {
+    return 'mE';
+  }
+
+  return 'gE';
+}
+
+function isEJugendDisplayKey(categoryKey: string) {
+  return hasDisplayToken(categoryKey, ['e jugend', 'e', 'ge', 'gme', 'me', 'we']);
+}
+
+function hasDisplayToken(value: string, tokens: string[]) {
+  return tokens.some((token) => new RegExp(`(^|\\s)${token}(\\s|$)`).test(value));
 }
 
 function normalizeTeamDisplayKey(value: string) {

@@ -172,7 +172,12 @@ test('public team names are numbered only within the same visible category', asy
   assert.match(tournament, /const category = formatScheduleCategoryLabel\(spiel\.kategorie\)/);
   assert.match(tournament, /isMiniDisplayCategory\(baseCategory\)/);
   assert.match(tournament, /return 'Mini'/);
-  assert.match(tournament, /const groupKey = `\$\{baseKey\}:\$\{categoryKey\}`/);
+  assert.match(tournament, /const qualifierKey = normalizeTeamDisplayKey\(getTeamDisplayQualifier\(entry\)\)/);
+  assert.match(tournament, /const groupKey = `\$\{baseKey\}:\$\{categoryKey\}:\$\{qualifierKey\}`/);
+  assert.match(tournament, /function getEJugendDisplayCode/);
+  assert.match(tournament, /return 'gE'/);
+  assert.match(tournament, /return 'mE'/);
+  assert.match(tournament, /return 'wE'/);
   assert.match(generator, /createTeamNumbersByStrength/);
   assert.match(generator, /getTeamNumberingRank\(team\.kategorie, team\.spielstaerke\)/);
   assert.match(generator, /getMiniCategoryNumberingRank/);
