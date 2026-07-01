@@ -162,6 +162,7 @@ test('backup and restore are available through authenticated admin API and visib
 
 test('public team names are numbered only within the same visible category', async () => {
   const tournament = await source('lib/tournament.ts');
+  const generator = await source('lib/spielplan-generator.ts');
   const spielplanPage = await source('app/spielplan/page.tsx');
   const ergebnissePage = await source('app/ergebnisse/page.tsx');
   const pdfExport = await source('lib/pdf-export-simple.ts');
@@ -169,7 +170,14 @@ test('public team names are numbered only within the same visible category', asy
 
   assert.match(tournament, /createTeamDisplayNameMapFromGames/);
   assert.match(tournament, /const category = formatScheduleCategoryLabel\(spiel\.kategorie\)/);
+  assert.match(tournament, /isMiniDisplayCategory\(baseCategory\)/);
+  assert.match(tournament, /return 'Mini'/);
   assert.match(tournament, /const groupKey = `\$\{baseKey\}:\$\{categoryKey\}`/);
+  assert.match(generator, /createTeamNumbersByStrength/);
+  assert.match(generator, /getTeamNumberingRank\(team\.kategorie, team\.spielstaerke\)/);
+  assert.match(generator, /getMiniCategoryNumberingRank/);
+  assert.match(generator, /getSkillNumberingRank/);
+  assert.doesNotMatch(generator, /getNextTeamNumber/);
 
   for (const file of [spielplanPage, ergebnissePage, pdfExport, xlsxExport]) {
     assert.match(file, /createTeamDisplayNameMapFromGames/);

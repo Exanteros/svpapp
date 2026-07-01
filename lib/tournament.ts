@@ -92,12 +92,16 @@ const SCHEDULE_SKILL_SUFFIXES = new Set([
 
 export function formatScheduleCategoryLabel(category: string) {
   const match = category.match(/^(.*?)\s+\(([^()]+)\)\s*$/);
+  const baseCategory = (match ? match[1] : category).trim();
+
+  if (isMiniDisplayCategory(baseCategory)) {
+    return 'Mini';
+  }
 
   if (!match) {
     return category;
   }
 
-  const baseCategory = match[1].trim();
   const suffix = match[2].trim().toLocaleLowerCase('de-DE');
 
   if (
@@ -108,6 +112,10 @@ export function formatScheduleCategoryLabel(category: string) {
   }
 
   return category;
+}
+
+function isMiniDisplayCategory(category: string) {
+  return normalizeTeamDisplayKey(category).startsWith('mini');
 }
 
 export type TeamDisplayNameMap = ReadonlyMap<string, string>;

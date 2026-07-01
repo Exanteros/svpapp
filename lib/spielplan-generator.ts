@@ -50,6 +50,17 @@ interface TeamEntry {
   eJugendGender: EJugendGender | null;
 }
 
+interface TeamSlot {
+  club: string;
+  kategorie: string;
+  schedulingCategory: string;
+  niveau: string;
+  eJugendGender: EJugendGender | null;
+  numberingCategory: string;
+  numberingRank: number;
+  sourceIndex: number;
+}
+
 interface GeneratorSettings extends PartialTournamentScheduleSettings {
   anzahlFelder?: number;
   spielzeitenAutomatisch?: boolean;
@@ -404,7 +415,8 @@ function createScheduleCategoryLabel(kategorie: string, niveau: string) {
 
 function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
   const teamsByCategory: Record<string, Record<string, TeamEntry[]>> = {};
-  const teamNumberCounters = new Map<string, number>();
+  const teamSlots: TeamSlot[] = [];
+  let sourceIndex = 0;
 
   for (const anmeldung of anmeldungen) {
     const club = anmeldung.verein?.trim();
@@ -422,31 +434,123 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
 
       const kategorie = getSchedulingCategory(team.kategorie);
       const niveau = normalizeSchedulingSkill(team.spielstaerke);
-      teamsByCategory[kategorie] ??= {};
-      teamsByCategory[kategorie][niveau] ??= [];
 
       for (let index = 0; index < Math.floor(teamCount); index++) {
-        const teamNumber = getNextTeamNumber(teamNumberCounters, club, team.kategorie);
-
-        teamsByCategory[kategorie][niveau].push({
-          name: `${club} ${getTeamNameCategory(team.kategorie)} ${teamNumber}`,
+        teamSlots.push({
           club,
           kategorie: team.kategorie,
+          schedulingCategory: kategorie,
+          niveau,
           eJugendGender: getEJugendGender(team.kategorie),
+          numberingCategory: getTeamNumberingCategory(team.kategorie),
+          numberingRank: getTeamNumberingRank(team.kategorie, team.spielstaerke),
+          sourceIndex: sourceIndex++,
         });
       }
     }
   }
 
+  const teamNumbers = createTeamNumbersByStrength(teamSlots);
+
+  for (const slot of teamSlots) {
+    teamsByCategory[slot.schedulingCategory] ??= {};
+    teamsByCategory[slot.schedulingCategory][slot.niveau] ??= [];
+
+    teamsByCategory[slot.schedulingCategory][slot.niveau].push({
+      name: `${slot.club} ${getTeamNameCategory(slot.kategorie)} ${teamNumbers.get(slot) ?? 1}`,
+      club: slot.club,
+      kategorie: slot.kategorie,
+      eJugendGender: slot.eJugendGender,
+    });
+  }
+
   return teamsByCategory;
 }
 
-function getNextTeamNumber(counters: Map<string, number>, club: string, categoryName: string) {
-  const key = `${normalizeClubName(club)}:${normalizeHeader(getTeamNumberingCategory(categoryName))}`;
-  const nextNumber = (counters.get(key) || 0) + 1;
+function createTeamNumbersByStrength(teamSlots: TeamSlot[]) {
+  const slotsByNumberingGroup = new Map<string, TeamSlot[]>();
+  const teamNumbers = new Map<TeamSlot, number>();
 
-  counters.set(key, nextNumber);
-  return nextNumber;
+  for (const slot of teamSlots) {
+    const key = getTeamNumberingKey(slot.club, slot.numberingCategory);
+    const slots = slotsByNumberingGroup.get(key) || [];
+
+    slots.push(slot);
+    slotsByNumberingGroup.set(key, slots);
+  }
+
+  slotsByNumberingGroup.forEach((slots) => {
+    [...slots]
+      .sort(compareTeamNumberingSlots)
+      .forEach((slot, index) => {
+        teamNumbers.set(slot, index + 1);
+      });
+  });
+
+  return teamNumbers;
+}
+
+function compareTeamNumberingSlots(first: TeamSlot, second: TeamSlot) {
+  return first.numberingRank - second.numberingRank
+    || first.schedulingCategory.localeCompare(second.schedulingCategory, 'de', { numeric: true, sensitivity: 'base' })
+    || first.niveau.localeCompare(second.niveau, 'de', { numeric: true, sensitivity: 'base' })
+    || first.sourceIndex - second.sourceIndex;
+}
+
+function getTeamNumberingKey(club: string, categoryName: string) {
+  return `${normalizeClubName(club)}:${normalizeHeader(categoryName)}`;
+}
+
+function getTeamNumberingRank(categoryName: string, skillLevel: string | null | undefined) {
+  return getSkillNumberingRank(skillLevel)
+    ?? getMiniCategoryNumberingRank(categoryName)
+    ?? 2;
+}
+
+function getSkillNumberingRank(value: string | null | undefined) {
+  const raw = String(value ?? '').trim();
+  const normalized = normalizeHeader(raw);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[1-3]$/.test(raw)) {
+    return Number(raw);
+  }
+
+  const numericSkill = normalized.match(/[1-3]/);
+  if (numericSkill) {
+    return Number(numericSkill[0]);
+  }
+
+  if (['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) || normalized.includes('anfaeng')) {
+    return 1;
+  }
+
+  if (
+    ['standard', 'standart', 'fortgeschritten', 'fortgeschrittene', 'erfahren', 'mittel', 'medium', 'advanced'].includes(normalized) ||
+    normalized.includes('fortgeschritten') ||
+    normalized.includes('erfahren')
+  ) {
+    return 2;
+  }
+
+  if (
+    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
+    normalized.includes('leistung') ||
+    normalized.includes('sehrerfahren')
+  ) {
+    return 3;
+  }
+
+  return null;
+}
+
+function getMiniCategoryNumberingRank(categoryName: string) {
+  const match = normalizeHeader(categoryName).match(/^mini([1-3])/);
+
+  return match ? Number(match[1]) : null;
 }
 
 function getTeamNumberingCategory(categoryName: string) {
