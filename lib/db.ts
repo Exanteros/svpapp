@@ -9,6 +9,7 @@ import {
   getDefaultSpielplanZeitbloecke,
   normalizeFeldEinstellungen,
   normalizeSpielplanZeitbloecke,
+  normalizeSpielplanTimingOverrides,
   normalizeSpielplanTimingProfil,
   resolveTournamentScheduleSettings,
   type FeldEinstellungen,
@@ -1126,6 +1127,7 @@ export function getAdminSettings() {
     SELECT key, value FROM einstellungen
   `).all();
   let rawSpielplanZeitbloecke: unknown;
+  let rawSpielplanTimingOverrides: unknown;
 
   const result: any = {
     turnierName: TOURNAMENT_DEFAULTS.name,
@@ -1152,6 +1154,7 @@ export function getAdminSettings() {
     ergebnisTabellenAktiv: false,
     spielzeitenAutomatisch: true,
     spielplanTimingProfil: 'standard',
+    spielplanTimingOverrides: {},
     spielplanZeitbloecke: getDefaultSpielplanZeitbloecke(),
     anmeldungAktiv: true,
     spielplanStatus: 'draft' as SpielplanStatus,
@@ -1231,6 +1234,13 @@ export function getAdminSettings() {
       case 'spielplan_timing_profil':
         result.spielplanTimingProfil = normalizeSpielplanTimingProfil(setting.value);
         break;
+      case 'spielplan_timing_overrides':
+        try {
+          rawSpielplanTimingOverrides = JSON.parse(setting.value);
+        } catch {
+          rawSpielplanTimingOverrides = undefined;
+        }
+        break;
       case 'spielplan_zeitbloecke':
         try {
           rawSpielplanZeitbloecke = JSON.parse(setting.value);
@@ -1258,6 +1268,9 @@ export function getAdminSettings() {
     resolveTournamentScheduleSettings(result)
   );
   result.spielplanTimingProfil = normalizeSpielplanTimingProfil(result.spielplanTimingProfil);
+  result.spielplanTimingOverrides = normalizeSpielplanTimingOverrides(
+    rawSpielplanTimingOverrides ?? result.spielplanTimingOverrides
+  );
 
   return result;
 }
@@ -1297,6 +1310,11 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
     updateSetting.run('26', 'spielzeiten_automatisch', settings.spielzeitenAutomatisch === false ? 'false' : 'true');
     updateSetting.run('28', 'spielplan_timing_profil', normalizeSpielplanTimingProfil(settings.spielplanTimingProfil));
+    updateSetting.run(
+      '29',
+      'spielplan_timing_overrides',
+      JSON.stringify(normalizeSpielplanTimingOverrides(settings.spielplanTimingOverrides))
+    );
     updateSetting.run(
       '27',
       'spielplan_zeitbloecke',

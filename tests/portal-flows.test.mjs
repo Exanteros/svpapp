@@ -47,6 +47,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   const publicRoute = await source('app/api/spielplan/get/route.ts');
   const generator = await source('lib/spielplan-generator.ts');
   const tournament = await source('lib/tournament.ts');
+  const db = await source('lib/db.ts');
+  const liveRoute = await source('app/api/spielplan/live/route.ts');
   const schedulePanel = await source('app/admin/_components/schedule-panel.tsx');
   const scheduleDragBoard = await source('app/admin/_components/schedule-drag-board.tsx');
 
@@ -67,10 +69,18 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.doesNotMatch(generator, /sameClubRequests/);
   assert.match(generator, /normalizeSpielplanTimingProfil/);
   assert.match(generator, /getDynamicSpielplanTimingProfiles/);
+  assert.match(generator, /applySpielplanTimingOverrides/);
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
+  assert.match(tournament, /normalizeSpielplanTimingOverrides/);
+  assert.match(tournament, /applySpielplanTimingOverrides/);
   assert.match(tournament, /capacityMinutes/);
+  assert.match(db, /spielplan_timing_overrides/);
+  assert.match(liveRoute, /applySpielplanTimingOverrides/);
   assert.match(schedulePanel, /Spielzeit-Vorschlag auswählen/);
+  assert.match(schedulePanel, /Spielzeiten feinjustieren/);
+  assert.match(schedulePanel, /Spielzeiten speichern & generieren/);
   assert.match(schedulePanel, /dynamicTimingProfiles/);
+  assert.match(schedulePanel, /draftTimingOverrides/);
   assert.doesNotMatch(schedulePanel, /SPIELPLAN_TIMING_PROFILES/);
   assert.match(scheduleDragBoard, /ScheduleTimeGrid/);
   assert.match(scheduleDragBoard, /gridTemplateColumns/);

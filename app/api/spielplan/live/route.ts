@@ -11,6 +11,7 @@ import {
 import { verifyApiAuth } from '@/lib/dal';
 import { notifySpielplanChanged } from '@/lib/spielplan-events';
 import {
+  applySpielplanTimingOverrides,
   areScoresPublicForDate,
   formatScheduleCategoryLabel,
   getDynamicSpielplanTimingProfiles,
@@ -50,14 +51,17 @@ export async function GET(request: NextRequest) {
 
     const feldEinstellungen = getStoredFeldEinstellungen();
     const timingProfile = settings.spielzeitenAutomatisch !== false
-      ? getSpielplanTimingProfile(
-        settings.spielplanTimingProfil,
-        getDynamicSpielplanTimingProfiles({
-          settings,
-          feldEinstellungen,
-          spielplanZeitbloecke: settings.spielplanZeitbloecke,
-          anmeldungen: getAllAnmeldungen() as Array<{ teams?: Array<{ kategorie?: string | null; anzahl?: number | string | null }> }>,
-        })
+      ? applySpielplanTimingOverrides(
+        getSpielplanTimingProfile(
+          settings.spielplanTimingProfil,
+          getDynamicSpielplanTimingProfiles({
+            settings,
+            feldEinstellungen,
+            spielplanZeitbloecke: settings.spielplanZeitbloecke,
+            anmeldungen: getAllAnmeldungen() as Array<{ teams?: Array<{ kategorie?: string | null; anzahl?: number | string | null }> }>,
+          })
+        ),
+        settings.spielplanTimingOverrides
       )
       : null;
 

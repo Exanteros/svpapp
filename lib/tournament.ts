@@ -234,6 +234,7 @@ export interface FeldTagesEinstellungen {
 
 export type SpielplanTimingProfil = 'kompakt' | 'standard' | 'lang';
 export type SpielplanTimingGruppe = 'miniE' | 'd' | 'cba';
+export type SpielplanTimingOverrides = Partial<Record<SpielplanTimingGruppe, Partial<FeldTagesEinstellungen>>>;
 
 export interface SpielplanTimingProfile {
   id: SpielplanTimingProfil;
@@ -567,6 +568,7 @@ export interface TournamentScheduleSettings {
   sonntagStartzeit: string;
   sonntagEndzeit: string;
   spielplanTimingProfil: SpielplanTimingProfil;
+  spielplanTimingOverrides: SpielplanTimingOverrides;
 }
 
 export interface SpielplanZeitblock {
@@ -600,6 +602,7 @@ export const DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS: TournamentScheduleSettings = 
   sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
   sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
   spielplanTimingProfil: 'standard',
+  spielplanTimingOverrides: {},
 };
 
 export function getDefaultSpielplanZeitbloecke(
@@ -722,7 +725,42 @@ export function resolveTournamentScheduleSettings(
     sonntagStartzeit: settings.sonntagStartzeit || DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagStartzeit,
     sonntagEndzeit: settings.sonntagEndzeit || DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagEndzeit,
     spielplanTimingProfil: normalizeSpielplanTimingProfil(settings.spielplanTimingProfil),
+    spielplanTimingOverrides: normalizeSpielplanTimingOverrides(settings.spielplanTimingOverrides),
   };
+}
+
+export function applySpielplanTimingOverrides(
+  profile: SpielplanTimingProfile,
+  overrides: unknown
+): SpielplanTimingProfile {
+  const normalizedOverrides = normalizeSpielplanTimingOverrides(overrides);
+
+  if (Object.keys(normalizedOverrides).length === 0) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    miniE: applyTimingOverride(profile.miniE, normalizedOverrides.miniE),
+    d: applyTimingOverride(profile.d, normalizedOverrides.d),
+    cba: applyTimingOverride(profile.cba, normalizedOverrides.cba),
+  };
+}
+
+export function normalizeSpielplanTimingOverrides(value: unknown): SpielplanTimingOverrides {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return (['miniE', 'd', 'cba'] as SpielplanTimingGruppe[]).reduce<SpielplanTimingOverrides>((result, group) => {
+    const override = normalizeTimingOverride((value as Record<string, unknown>)[group]);
+
+    if (override) {
+      result[group] = override;
+    }
+
+    return result;
+  }, {});
 }
 
 export function getScoreVisibilityByDate(settings: TournamentScoreVisibilitySettings = {}) {
@@ -809,6 +847,49 @@ function normalizeFeldEinstellungenProTag(value: unknown, fallback: FeldTagesEin
     };
     return result;
   }, {});
+}
+
+function applyTimingOverride(
+  fallback: FeldTagesEinstellungen,
+  override?: Partial<FeldTagesEinstellungen>
+): FeldTagesEinstellungen {
+  if (!override) {
+    return fallback;
+  }
+
+  return {
+    spielzeit: toPositiveInteger(override.spielzeit, fallback.spielzeit),
+    pausenzeit: toNonNegativeInteger(override.pausenzeit, fallback.pausenzeit),
+    halbzeitpause: toNonNegativeInteger(override.halbzeitpause, fallback.halbzeitpause),
+    zweiHalbzeiten: typeof override.zweiHalbzeiten === 'boolean' ? override.zweiHalbzeiten : fallback.zweiHalbzeiten,
+  };
+}
+
+function normalizeTimingOverride(value: unknown): Partial<FeldTagesEinstellungen> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const input = value as Partial<FeldTagesEinstellungen>;
+  const override: Partial<FeldTagesEinstellungen> = {};
+
+  if (input.spielzeit !== undefined) {
+    override.spielzeit = toPositiveInteger(input.spielzeit, 1);
+  }
+
+  if (input.pausenzeit !== undefined) {
+    override.pausenzeit = toNonNegativeInteger(input.pausenzeit, 0);
+  }
+
+  if (input.halbzeitpause !== undefined) {
+    override.halbzeitpause = toNonNegativeInteger(input.halbzeitpause, 0);
+  }
+
+  if (typeof input.zweiHalbzeiten === 'boolean') {
+    override.zweiHalbzeiten = input.zweiHalbzeiten;
+  }
+
+  return Object.keys(override).length > 0 ? override : null;
 }
 
 function toPositiveInteger(value: unknown, fallback: number) {

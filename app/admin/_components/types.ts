@@ -72,6 +72,9 @@ export interface SpielplanZeitblock {
   kategorien: string[];
 }
 
+export type SpielplanTimingGruppe = "miniE" | "d" | "cba";
+export type SpielplanTimingOverrides = Partial<Record<SpielplanTimingGruppe, Partial<FeldTagesEinstellungen>>>;
+
 export interface Statistiken {
   anmeldungen: number;
   teams: number;
@@ -105,6 +108,7 @@ export interface TurnierEinstellungen {
   ergebnisTabellenAktiv: boolean;
   spielzeitenAutomatisch: boolean;
   spielplanTimingProfil: "kompakt" | "standard" | "lang";
+  spielplanTimingOverrides: SpielplanTimingOverrides;
   spielplanZeitbloecke: SpielplanZeitblock[];
   spielplanStatus: SpielplanStatus;
   spielplanPublishedAt?: string | null;
@@ -226,6 +230,7 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   ergebnisTabellenAktiv: false,
   spielzeitenAutomatisch: true,
   spielplanTimingProfil: "standard",
+  spielplanTimingOverrides: {},
   spielplanZeitbloecke: [
     {
       id: "samstag-mini-e",

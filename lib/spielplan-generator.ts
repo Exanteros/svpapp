@@ -1,6 +1,7 @@
 import {
   DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS,
   TEAM_CATEGORIES,
+  applySpielplanTimingOverrides,
   formatTeamDisplayName,
   getDynamicSpielplanTimingProfiles,
   getSpielplanTimingProfile,
@@ -15,6 +16,7 @@ import {
   type FeldTagesEinstellungen,
   type PartialTournamentScheduleSettings,
   type SpielplanTimingProfile,
+  type SpielplanTimingOverrides,
   type SpielplanTimingProfil,
   type SpielplanZeitblock,
   type TournamentScheduleSettings,
@@ -52,6 +54,7 @@ interface GeneratorSettings extends PartialTournamentScheduleSettings {
   anzahlFelder?: number;
   spielzeitenAutomatisch?: boolean;
   spielplanTimingProfil?: SpielplanTimingProfil;
+  spielplanTimingOverrides?: SpielplanTimingOverrides;
   spielplanZeitbloecke?: SpielplanZeitblock[];
 }
 
@@ -280,7 +283,10 @@ function getGeneratorTimingProfile(
     anmeldungen,
   });
 
-  return getSpielplanTimingProfile(timingProfilId, dynamicProfiles);
+  return applySpielplanTimingOverrides(
+    getSpielplanTimingProfile(timingProfilId, dynamicProfiles),
+    settings.spielplanTimingOverrides
+  );
 }
 
 function createAutoSpielzeitMessage(datum: string, spiele: number, aktiveFelder: number) {

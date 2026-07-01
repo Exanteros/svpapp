@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle, ExternalLink, Plus, Trash2, Wand2, X } from "lucide-react";
+import { CalendarDays, CheckCircle, ExternalLink, Plus, RotateCcw, SlidersHorizontal, Trash2, Wand2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { getDynamicSpielplanTimingProfiles } from "@/lib/tournament";
+import { applySpielplanTimingOverrides, getDynamicSpielplanTimingProfiles, normalizeSpielplanTimingOverrides } from "@/lib/tournament";
 
 import { DangerZone } from "./danger-zone";
 import { formatDate } from "./format";
 import { ScheduleDragBoard } from "./schedule-drag-board";
-import type { Anmeldung, FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanZeitblock, TurnierEinstellungen } from "./types";
+import type { Anmeldung, FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanTimingGruppe, SpielplanTimingOverrides, SpielplanZeitblock, TurnierEinstellungen } from "./types";
 import { TEAM_CATEGORIES } from "./types";
 
 interface SchedulePanelProps {
@@ -33,6 +33,12 @@ interface SchedulePanelProps {
   onDeleteAll: () => void;
   onSpielMove: (spielId: string, patch: Pick<Spiel, "datum" | "zeit" | "feld">) => Promise<unknown> | unknown;
 }
+
+const TIMING_GROUPS: Array<{ id: SpielplanTimingGruppe; label: string; hint: string }> = [
+  { id: "miniE", label: "Mini / E", hint: "Samstag" },
+  { id: "d", label: "D-Jugend", hint: "Sonntag Vormittag" },
+  { id: "cba", label: "C / B / A", hint: "Sonntag Nachmittag" },
+];
 
 export function SchedulePanel({
   settings,
@@ -52,7 +58,13 @@ export function SchedulePanel({
   const [draftZeitbloecke, setDraftZeitbloecke] = useState<SpielplanZeitblock[]>(() =>
     materializeZeitbloecke(settings.spielplanZeitbloecke, settings)
   );
+  const [draftTimingOverrides, setDraftTimingOverrides] = useState<SpielplanTimingOverrides>(() =>
+    normalizeTimingOverridesForAdmin(settings.spielplanTimingOverrides)
+  );
   const [savedSignature, setSavedSignature] = useState(() => JSON.stringify(feldEinstellungen));
+  const [savedTimingOverridesSignature, setSavedTimingOverridesSignature] = useState(() =>
+    JSON.stringify(normalizeTimingOverridesForAdmin(settings.spielplanTimingOverrides))
+  );
   const draftSignature = useMemo(() => JSON.stringify(draftFields), [draftFields]);
   const hasUnsavedFields = draftSignature !== savedSignature;
   const savedZeitbloeckeSignature = useMemo(
@@ -64,6 +76,12 @@ export function SchedulePanel({
   const autoSpielzeiten = settings.spielzeitenAutomatisch !== false;
   const selectedTimingProfile = settings.spielplanTimingProfil || "standard";
   const hasUnsavedGeneratorSetup = hasUnsavedFields || hasUnsavedZeitbloecke;
+  const timingOverrides = useMemo(
+    () => normalizeTimingOverridesForAdmin(draftTimingOverrides),
+    [draftTimingOverrides]
+  );
+  const draftTimingOverridesSignature = useMemo(() => JSON.stringify(timingOverrides), [timingOverrides]);
+  const hasUnsavedTimingOverrides = draftTimingOverridesSignature !== savedTimingOverridesSignature;
   const previewHref = settings.spielplanStatus === "published" ? "/spielplan" : "/spielplan?preview=1";
   const days = useMemo(
     () => [
@@ -86,6 +104,16 @@ export function SchedulePanel({
     spielplanZeitbloecke: draftZeitbloecke,
     anmeldungen,
   }), [anmeldungen, draftFields, draftZeitbloecke, settings]);
+  const selectedSuggestedTimingProfile = useMemo(() => (
+    dynamicTimingProfiles.find((profile) => profile.id === selectedTimingProfile)
+      || dynamicTimingProfiles.find((profile) => profile.id === "standard")
+      || dynamicTimingProfiles[0]
+  ), [dynamicTimingProfiles, selectedTimingProfile]);
+  const activeTimingProfile = useMemo(() => (
+    selectedSuggestedTimingProfile
+      ? applySpielplanTimingOverrides(selectedSuggestedTimingProfile, timingOverrides)
+      : null
+  ), [selectedSuggestedTimingProfile, timingOverrides]);
 
   useEffect(() => {
     const nextFields = materializeFieldsForDays(feldEinstellungen, days);
@@ -104,6 +132,12 @@ export function SchedulePanel({
     settings.sonntagStartzeit,
     settings.sonntagEndzeit,
   ]);
+
+  useEffect(() => {
+    const nextOverrides = normalizeTimingOverridesForAdmin(settings.spielplanTimingOverrides);
+    setDraftTimingOverrides(nextOverrides);
+    setSavedTimingOverridesSignature(JSON.stringify(nextOverrides));
+  }, [settings.spielplanTimingOverrides]);
 
   function updateField(id: string, patch: Partial<FeldEinstellungen>) {
     setDraftFields((fields) =>
@@ -292,6 +326,61 @@ export function SchedulePanel({
     const nextBlocks = materializeZeitbloecke(draftZeitbloecke, settings);
     await onSettingsPatch({ spielplanZeitbloecke: nextBlocks });
     onGenerate({ spielplanZeitbloecke: nextBlocks });
+  }
+
+  async function saveTimingOverrides() {
+    const nextOverrides = normalizeTimingOverridesForAdmin(timingOverrides);
+    await onSettingsPatch({ spielplanTimingOverrides: nextOverrides });
+    setDraftTimingOverrides(nextOverrides);
+    setSavedTimingOverridesSignature(JSON.stringify(nextOverrides));
+  }
+
+  async function saveTimingOverridesAndGenerate() {
+    const nextOverrides = normalizeTimingOverridesForAdmin(timingOverrides);
+    await onSettingsPatch({ spielplanTimingOverrides: nextOverrides });
+    setDraftTimingOverrides(nextOverrides);
+    setSavedTimingOverridesSignature(JSON.stringify(nextOverrides));
+    onGenerate({ spielplanTimingOverrides: nextOverrides });
+  }
+
+  function selectTimingProfile(profileId: TurnierEinstellungen["spielplanTimingProfil"]) {
+    setDraftTimingOverrides({});
+    setSavedTimingOverridesSignature(JSON.stringify({}));
+    void onSettingsPatch({ spielplanTimingProfil: profileId, spielplanTimingOverrides: {} });
+  }
+
+  function resetTimingOverrides() {
+    setDraftTimingOverrides({});
+  }
+
+  function updateTimingOverride(
+    group: SpielplanTimingGruppe,
+    key: "spielzeit" | "pausenzeit",
+    value: string
+  ) {
+    if (!selectedSuggestedTimingProfile || value === "") {
+      return;
+    }
+
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+      return;
+    }
+
+    const base = selectedSuggestedTimingProfile[group];
+    const nextGroup = {
+      ...base,
+      ...(timingOverrides[group] || {}),
+      [key]: Math.max(key === "spielzeit" ? 1 : 0, Math.floor(numericValue)),
+      halbzeitpause: 0,
+      zweiHalbzeiten: false,
+    };
+
+    setDraftTimingOverrides(normalizeTimingOverridesForAdmin({
+      ...timingOverrides,
+      [group]: nextGroup,
+    }));
   }
 
   return (
@@ -705,13 +794,17 @@ export function SchedulePanel({
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap">
             <Button
-              onClick={() => onGenerate()}
+              onClick={hasUnsavedTimingOverrides ? saveTimingOverridesAndGenerate : () => onGenerate()}
               disabled={saving || hasUnsavedGeneratorSetup}
               className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
               title={hasUnsavedGeneratorSetup ? "Bitte zuerst Felder oder Zeitblöcke speichern" : undefined}
             >
               <Wand2 className="size-4" />
-              {hasUnsavedGeneratorSetup ? "Erst Setup speichern" : "Spielplan generieren"}
+              {hasUnsavedGeneratorSetup
+                ? "Erst Setup speichern"
+                : hasUnsavedTimingOverrides
+                  ? "Spielzeiten speichern & generieren"
+                  : "Spielplan generieren"}
             </Button>
             <Button asChild variant="outline" className="w-full sm:w-auto">
               <a href={previewHref} target="_blank" rel="noreferrer">
@@ -745,7 +838,7 @@ export function SchedulePanel({
                       type="button"
                       disabled={saving}
                       onClick={() => {
-                        void onSettingsPatch({ spielplanTimingProfil: profile.id });
+                        selectTimingProfile(profile.id);
                       }}
                       className={[
                         "rounded-[8px] border p-4 text-left transition",
@@ -775,6 +868,96 @@ export function SchedulePanel({
                   );
                 })}
               </div>
+              {activeTimingProfile && selectedSuggestedTimingProfile && (
+                <div className="mt-4 rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <SlidersHorizontal className="size-4 text-[#5e6d35]" />
+                        <h3 className="text-sm font-semibold">Spielzeiten feinjustieren</h3>
+                        <Badge variant="outline" className={hasUnsavedTimingOverrides ? "border-[#d9dec8] bg-white text-[#4f5d2f]" : "border-[#e1e4d8] bg-white text-muted-foreground"}>
+                          {hasUnsavedTimingOverrides ? "ungespeichert" : Object.keys(timingOverrides).length > 0 ? "manuell" : "Vorschlag"}
+                        </Badge>
+                      </div>
+                      <p className="!mt-1 text-sm leading-6 text-muted-foreground">
+                        Ändere die Minuten, wenn dir der Vorschlag nicht passt. Alle Spiele derselben Altersgruppe behalten gemeinsame Anpfiffzeiten.
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={Object.keys(timingOverrides).length === 0 || saving}
+                        onClick={resetTimingOverrides}
+                        className="w-full sm:w-auto"
+                      >
+                        <RotateCcw className="size-4" />
+                        Vorschlag
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!hasUnsavedTimingOverrides || saving}
+                        onClick={saveTimingOverrides}
+                        className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
+                      >
+                        Spielzeiten speichern
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                    {TIMING_GROUPS.map((group) => {
+                      const timing = activeTimingProfile[group.id];
+                      const suggestedTiming = selectedSuggestedTimingProfile[group.id];
+                      const isCustom = timing.spielzeit !== suggestedTiming.spielzeit || timing.pausenzeit !== suggestedTiming.pausenzeit;
+
+                      return (
+                        <div key={group.id} className="rounded-[8px] border border-[#e1e4d8] bg-white p-3">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold">{group.label}</div>
+                              <div className="text-xs text-muted-foreground">{group.hint}</div>
+                            </div>
+                            {isCustom && (
+                              <Badge variant="outline" className="border-[#d9dec8] text-[#4f5d2f]">
+                                angepasst
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Spielzeit</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={timing.spielzeit}
+                                disabled={saving}
+                                onChange={(event) => updateTimingOverride(group.id, "spielzeit", event.target.value)}
+                                className="h-9 bg-white"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Pause</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={timing.pausenzeit}
+                                disabled={saving}
+                                onChange={(event) => updateTimingOverride(group.id, "pausenzeit", event.target.value)}
+                                className="h-9 bg-white"
+                              />
+                            </div>
+                          </div>
+                          <p className="!mt-2 text-[11px] text-muted-foreground">
+                            Vorschlag: {suggestedTiming.spielzeit}+{suggestedTiming.pausenzeit} Min
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {spiele.length === 0 ? (
@@ -969,4 +1152,8 @@ function createZeitblockId(blocks: SpielplanZeitblock[]) {
 
 function normalizeTimeInput(value: string | undefined, fallback: string) {
   return /^\d{1,2}:\d{2}$/.test(value || "") ? value as string : fallback;
+}
+
+function normalizeTimingOverridesForAdmin(value: unknown): SpielplanTimingOverrides {
+  return normalizeSpielplanTimingOverrides(value) as SpielplanTimingOverrides;
 }
