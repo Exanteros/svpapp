@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { getAdminSettings } from "@/lib/db";
-import { resolveTournamentScheduleSettings } from "@/lib/tournament";
+import { getTournamentYear, replaceTextYear, resolveTournamentScheduleSettings } from "@/lib/tournament";
 
 const DEFAULT_SITE_URL = "http://localhost:3003";
 const SITE_NAME = "SV Puschendorf Turnier";
@@ -45,7 +45,7 @@ export function getSeoData(): SeoData {
     return {
       siteUrl: getSiteUrl(),
       turnierName: settings.turnierName || "Handball-Turnier des SV Puschendorf",
-      tournamentYear: getYear(schedule.turnierStartDatum),
+      tournamentYear: getTournamentYear(schedule.turnierStartDatum),
       startDate: schedule.turnierStartDatum,
       endDate: schedule.turnierEndDatum,
       dateRange: formatDateRange(schedule.turnierStartDatum, schedule.turnierEndDatum),
@@ -296,14 +296,8 @@ function parseDate(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function getYear(value: string) {
-  return parseDate(value)?.getFullYear() || new Date().getFullYear();
-}
-
 function getTournamentTitle(seo: SeoData) {
-  return new RegExp(`\\b${seo.tournamentYear}\\b`).test(seo.turnierName)
-    ? seo.turnierName
-    : `${seo.turnierName} ${seo.tournamentYear}`;
+  return replaceTextYear(seo.turnierName, seo.tournamentYear);
 }
 
 function indexRobots(): Metadata["robots"] {

@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 
 import { getPublicRoutesForSeo } from "@/lib/seo";
 
+export const dynamic = "force-dynamic";
+
 export default function robots(): MetadataRoute.Robots {
   const { seo, routes } = getPublicRoutesForSeo();
   const allowedRoutes = routes.map((route) => route.path);

@@ -7,10 +7,12 @@ import {
   TOURNAMENT_DEFAULTS,
   calculateRegistrationCost,
   getDefaultSpielplanZeitbloecke,
+  getTournamentYear,
   normalizeFeldEinstellungen,
   normalizeSpielplanZeitbloecke,
   normalizeSpielplanTimingOverrides,
   normalizeSpielplanTimingProfil,
+  replaceTextYear,
   resolveTournamentScheduleSettings,
   type FeldEinstellungen,
 } from './tournament';
@@ -1305,9 +1307,13 @@ export function getAdminSettings() {
     }
   });
 
+  const scheduleSettings = resolveTournamentScheduleSettings(result);
+  const tournamentYear = getTournamentYear(scheduleSettings.turnierStartDatum);
+
+  result.turnierName = replaceTextYear(result.turnierName || TOURNAMENT_DEFAULTS.name, tournamentYear);
   result.spielplanZeitbloecke = normalizeSpielplanZeitbloecke(
     rawSpielplanZeitbloecke ?? result.spielplanZeitbloecke,
-    resolveTournamentScheduleSettings(result)
+    scheduleSettings
   );
   result.spielplanTimingProfil = normalizeSpielplanTimingProfil(result.spielplanTimingProfil);
   result.spielplanTimingOverrides = normalizeSpielplanTimingOverrides(
@@ -1319,13 +1325,16 @@ export function getAdminSettings() {
 
 export function saveAdminSettings(settings: any) {
   const db = getDatabase();
+  const scheduleSettings = resolveTournamentScheduleSettings(settings);
+  const tournamentYear = getTournamentYear(scheduleSettings.turnierStartDatum);
+  const turnierName = replaceTextYear(settings.turnierName || TOURNAMENT_DEFAULTS.name, tournamentYear);
   const updateSetting = db.prepare(`
     INSERT OR REPLACE INTO einstellungen (id, key, value, updated_at)
     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
   `);
 
   const transaction = db.transaction(() => {
-    updateSetting.run('1', 'turnier_name', settings.turnierName);
+    updateSetting.run('1', 'turnier_name', turnierName);
     updateSetting.run('2', 'startgeld', settings.startgeld.toString());
     updateSetting.run('3', 'schiri_geld', settings.schiriGeld.toString());
     updateSetting.run('4', 'anzahl_felder', settings.anzahlFelder.toString());
@@ -1360,7 +1369,7 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run(
       '27',
       'spielplan_zeitbloecke',
-      JSON.stringify(normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, resolveTournamentScheduleSettings(settings)))
+      JSON.stringify(normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, scheduleSettings))
     );
     // Sicher speichern des Passkeys (in produktiver Umgebung sollte dieser gehasht werden)
     if (settings.adminPasskey) {

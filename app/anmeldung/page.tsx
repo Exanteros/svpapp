@@ -18,11 +18,13 @@ import {
   calculateRegistrationCost,
   calculateTeamCost,
   formatEuro,
+  getTournamentYear,
   type AnmeldungTeam,
 } from "@/lib/tournament";
 
 export default function AnmeldungPage() {
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+  const [tournamentYear, setTournamentYear] = useState(getTournamentYear(TOURNAMENT_DEFAULTS.startDate));
   const [contactData, setContactData] = useState({
     verein: "",
     kontakt: "",
@@ -44,6 +46,9 @@ export default function AnmeldungPage() {
 
         if (!cancelled) {
           setRegistrationOpen(response.ok ? data.anmeldungAktiv === true : false);
+          if (response.ok) {
+            setTournamentYear(Number(data.tournamentYear) || getTournamentYear(data.turnierStartDatum));
+          }
         }
       } catch (error) {
         console.error("Fehler beim Laden des Anmeldestatus:", error);
@@ -302,7 +307,7 @@ export default function AnmeldungPage() {
             </CardHeader>
             <CardContent>
               <code className="block rounded-md border bg-muted p-3 text-xs leading-5 text-muted-foreground">
-                Rasenturnier 2025, {contactData.verein || "[Vereinsname]"}, {registrations.length} Team{registrations.length !== 1 ? "s" : ""}
+                Rasenturnier {tournamentYear}, {contactData.verein || "[Vereinsname]"}, {registrations.length} Team{registrations.length !== 1 ? "s" : ""}
               </code>
             </CardContent>
           </Card>

@@ -13,6 +13,48 @@ export const TOURNAMENT_DEFAULTS = {
   maxTeamsPerCategorySelection: 5,
 } as const;
 
+const TEXT_YEAR_PATTERN = /\b20\d{2}\b/g;
+
+export function getTournamentYear(dateString: string = TOURNAMENT_DEFAULTS.startDate) {
+  const date = parseTournamentDate(dateString);
+
+  return date?.getFullYear() || new Date().getFullYear();
+}
+
+export function replaceTextYear(value: string, year: number | string) {
+  const normalizedValue = String(value || '').replace(/\s+/g, ' ').trim();
+  const normalizedYear = String(year || '').trim();
+
+  if (!normalizedValue || !normalizedYear) {
+    return normalizedValue;
+  }
+
+  return normalizedValue.match(TEXT_YEAR_PATTERN)
+    ? normalizedValue.replace(TEXT_YEAR_PATTERN, normalizedYear)
+    : `${normalizedValue} ${normalizedYear}`;
+}
+
+export function formatTournamentDate(dateString: string) {
+  const date = parseTournamentDate(dateString);
+
+  if (!date) {
+    return dateString;
+  }
+
+  return date.toLocaleDateString('de-DE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function parseTournamentDate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export const TEAM_CATEGORIES = [
   { id: 'mini-3', name: 'Mini 3 (echte Anfänger)', needsSkill: false, day: 'Samstag' },
   { id: 'mini-2', name: 'Mini 2 (Anfänger)', needsSkill: false, day: 'Samstag' },

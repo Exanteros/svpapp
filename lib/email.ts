@@ -1,4 +1,12 @@
 import nodemailer from 'nodemailer';
+import { getAdminSettings } from './db';
+import {
+  TOURNAMENT_DEFAULTS,
+  formatTournamentDate,
+  getTournamentYear,
+  replaceTextYear,
+  resolveTournamentScheduleSettings,
+} from './tournament';
 
 // E-Mail-Konfiguration (für Entwicklung verwenden wir Ethereal)
 const transporter = nodemailer.createTransport({
@@ -32,7 +40,41 @@ export interface AdminInviteEmailData {
   inviteExpiresAt: string;
 }
 
+function getEmailTournamentInfo() {
+  try {
+    const settings = getAdminSettings();
+    const schedule = resolveTournamentScheduleSettings(settings);
+    const year = getTournamentYear(schedule.turnierStartDatum);
+
+    return {
+      title: replaceTextYear(settings.turnierName || TOURNAMENT_DEFAULTS.name, year),
+      paymentPurposePrefix: `Rasenturnier ${year}`,
+      startDateLabel: formatTournamentDate(schedule.turnierStartDatum),
+      secondDateLabel: formatTournamentDate(schedule.turnierEndDatum),
+      startTime: schedule.samstagStartzeit,
+      endTime: schedule.samstagEndzeit,
+      secondStartTime: schedule.sonntagStartzeit,
+      secondEndTime: schedule.sonntagEndzeit,
+    };
+  } catch (error) {
+    console.warn('Turnierdaten für E-Mail konnten nicht geladen werden:', error);
+    const year = getTournamentYear(TOURNAMENT_DEFAULTS.startDate);
+
+    return {
+      title: replaceTextYear(TOURNAMENT_DEFAULTS.name, year),
+      paymentPurposePrefix: `Rasenturnier ${year}`,
+      startDateLabel: formatTournamentDate(TOURNAMENT_DEFAULTS.startDate),
+      secondDateLabel: formatTournamentDate(TOURNAMENT_DEFAULTS.endDate),
+      startTime: TOURNAMENT_DEFAULTS.saturdayStartTime,
+      endTime: TOURNAMENT_DEFAULTS.saturdayEndTime,
+      secondStartTime: TOURNAMENT_DEFAULTS.sundayStartTime,
+      secondEndTime: TOURNAMENT_DEFAULTS.sundayEndTime,
+    };
+  }
+}
+
 export async function sendConfirmationEmail(data: EmailData) {
+  const tournamentInfo = getEmailTournamentInfo();
   const teamsList = data.teams.map(team => 
     `• ${team.kategorie}: ${team.anzahl} Team${team.anzahl > 1 ? 's' : ''} ${team.schiri ? '(mit Schiri)' : '(ohne Schiri, +20€)'} ${team.spielstaerke ? `- ${team.spielstaerke}` : ''}`
   ).join('\n');
@@ -42,14 +84,14 @@ export async function sendConfirmationEmail(data: EmailData) {
       <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #10b981, #3b82f6); color: white; padding: 30px; border-radius: 8px; text-align: center;">
           <h1 style="margin: 0; font-size: 24px;">🏆 Anmeldung bestätigt!</h1>
-          <p style="margin: 10px 0 0 0; font-size: 16px;">Rasenturnier Puschendorf 2025</p>
+          <p style="margin: 10px 0 0 0; font-size: 16px;">${tournamentInfo.title}</p>
         </div>
         
         <div style="padding: 30px; background: #f8fafc; border-radius: 8px; margin-top: 20px;">
           <h2 style="color: #1e293b; margin-top: 0;">Vielen Dank für Ihre Anmeldung, ${data.kontakt}!</h2>
           
           <p style="color: #475569; line-height: 1.6;">
-            Ihre Anmeldung für das <strong>Rasenturnier Puschendorf 2025</strong> ist erfolgreich eingegangen.
+            Ihre Anmeldung für das <strong>${tournamentInfo.title}</strong> ist erfolgreich eingegangen.
           </p>
           
           <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
@@ -65,15 +107,15 @@ export async function sendConfirmationEmail(data: EmailData) {
             <h3 style="color: #1e40af; margin-top: 0;">💳 Zahlungshinweise</h3>
             <p style="margin: 0; color: #1e40af;">
               Bitte überweisen Sie das Startgeld auf das Vereinskonto des SV Puschendorf:<br>
-              <strong>Verwendungszweck:</strong> "Rasenturnier 2025, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
+              <strong>Verwendungszweck:</strong> "${tournamentInfo.paymentPurposePrefix}, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
             </p>
           </div>
           
           <div style="background: #fef3c7; padding: 20px; border-radius: 6px; margin: 20px 0;">
             <h3 style="color: #92400e; margin-top: 0;">📅 Turnier-Termine</h3>
             <p style="margin: 0; color: #92400e;">
-              <strong>Samstag, 5. Juli 2025:</strong> 13:00 - 17:00 Uhr (Mini + E-Jugend)<br>
-              <strong>Sonntag, 6. Juli 2025:</strong> 10:00 - 17:00 Uhr (D, C, B, A-Jugend)
+              <strong>${tournamentInfo.startDateLabel}:</strong> ${tournamentInfo.startTime} - ${tournamentInfo.endTime} Uhr (Mini + E-Jugend)<br>
+              <strong>${tournamentInfo.secondDateLabel}:</strong> ${tournamentInfo.secondStartTime} - ${tournamentInfo.secondEndTime} Uhr (D, C, B, A-Jugend)
             </p>
           </div>
           
@@ -93,11 +135,11 @@ export async function sendConfirmationEmail(data: EmailData) {
   `;
 
   const textContent = `
-Anmeldung bestätigt - Rasenturnier Puschendorf 2025
+Anmeldung bestätigt - ${tournamentInfo.title}
 
 Vielen Dank für Ihre Anmeldung, ${data.kontakt}!
 
-Ihre Anmeldung für das Rasenturnier Puschendorf 2025 ist erfolgreich eingegangen.
+Ihre Anmeldung für das ${tournamentInfo.title} ist erfolgreich eingegangen.
 
 ANMELDUNGSDETAILS:
 Verein: ${data.verein}
@@ -108,11 +150,11 @@ Gesamtkosten: ${data.kosten}€
 
 ZAHLUNGSHINWEISE:
 Bitte überweisen Sie das Startgeld auf das Vereinskonto des SV Puschendorf:
-Verwendungszweck: "Rasenturnier 2025, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
+Verwendungszweck: "${tournamentInfo.paymentPurposePrefix}, ${data.verein}, ${data.teams.length} Team${data.teams.length > 1 ? 's' : ''}"
 
 TURNIER-TERMINE:
-Samstag, 5. Juli 2025: 13:00 - 17:00 Uhr (Mini + E-Jugend)
-Sonntag, 6. Juli 2025: 10:00 - 17:00 Uhr (D, C, B, A-Jugend)
+${tournamentInfo.startDateLabel}: ${tournamentInfo.startTime} - ${tournamentInfo.endTime} Uhr (Mini + E-Jugend)
+${tournamentInfo.secondDateLabel}: ${tournamentInfo.secondStartTime} - ${tournamentInfo.secondEndTime} Uhr (D, C, B, A-Jugend)
 
 Wir freuen uns auf ein spannendes Turnier mit Ihnen!
 
@@ -124,7 +166,7 @@ Das Team des SV Puschendorf
     const info = await transporter.sendMail({
       from: '"SV Puschendorf Rasenturnier" <noreply@sv-puschendorf.de>',
       to: data.email,
-      subject: '🏆 Anmeldung bestätigt - Rasenturnier Puschendorf 2025',
+      subject: `🏆 Anmeldung bestätigt - ${tournamentInfo.title}`,
       text: textContent,
       html: htmlContent
     });

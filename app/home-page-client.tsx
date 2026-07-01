@@ -17,6 +17,7 @@ import {
 import CookieBanner from "@/components/CookieBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getTournamentYear, TOURNAMENT_DEFAULTS } from "@/lib/tournament";
 
 export interface TurnierEinstellungen {
   turnierStartDatum: string;
@@ -29,12 +30,12 @@ export interface TurnierEinstellungen {
 }
 
 const defaultTurnierEinstellungen: TurnierEinstellungen = {
-  turnierStartDatum: "2025-07-05",
-  turnierEndDatum: "2025-07-06",
-  samstagStartzeit: "13:00",
-  samstagEndzeit: "17:00",
-  sonntagStartzeit: "10:00",
-  sonntagEndzeit: "17:00",
+  turnierStartDatum: TOURNAMENT_DEFAULTS.startDate,
+  turnierEndDatum: TOURNAMENT_DEFAULTS.endDate,
+  samstagStartzeit: TOURNAMENT_DEFAULTS.saturdayStartTime,
+  samstagEndzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
+  sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
+  sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
   anmeldungAktiv: false,
 };
 
@@ -100,10 +101,6 @@ function formatDateShort(dateString: string) {
 
 function formatTime(startzeit: string, endzeit: string) {
   return `${startzeit} - ${endzeit} Uhr`;
-}
-
-function getTournamentYear(dateString: string) {
-  return createDate(dateString).getFullYear();
 }
 
 function getTournamentDays(settings: TurnierEinstellungen) {

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { getTournamentYear, TOURNAMENT_DEFAULTS } from "@/lib/tournament";
 import { cn } from "@/lib/utils";
 
 const shellRoutes = new Set([
@@ -33,6 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [tournamentYear, setTournamentYear] = useState(getTournamentYear(TOURNAMENT_DEFAULTS.startDate));
   const visibleNavItems = useMemo(
     () => navItems.filter((item) => !item.requiresRegistration || registrationOpen),
     [registrationOpen]
@@ -48,6 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         if (!cancelled && response.ok) {
           setRegistrationOpen(data.anmeldungAktiv === true);
+          setTournamentYear(Number(data.tournamentYear) || getTournamentYear(data.turnierStartDatum));
         }
       } catch (error) {
         console.error("Fehler beim Laden des Anmeldestatus:", error);
@@ -166,7 +169,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <footer className="pwa-footer border-t">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p>© 2025 SV Puschendorf Rasenturnier</p>
+          <p>© {tournamentYear} SV Puschendorf Rasenturnier</p>
           <div className="flex flex-wrap items-center gap-3">
             <Link className="hover:text-foreground" href="/impressum">Impressum</Link>
             <Separator orientation="vertical" className="h-4" />

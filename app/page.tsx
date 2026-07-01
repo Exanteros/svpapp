@@ -1,17 +1,17 @@
 import HomePageClient, { type TurnierEinstellungen } from "./home-page-client";
 
 import { getAdminSettings } from "@/lib/db";
-import { resolveTournamentScheduleSettings } from "@/lib/tournament";
+import { resolveTournamentScheduleSettings, TOURNAMENT_DEFAULTS } from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
 
 const fallbackTurnierEinstellungen: TurnierEinstellungen = {
-  turnierStartDatum: "2025-07-05",
-  turnierEndDatum: "2025-07-06",
-  samstagStartzeit: "13:00",
-  samstagEndzeit: "17:00",
-  sonntagStartzeit: "10:00",
-  sonntagEndzeit: "17:00",
+  turnierStartDatum: TOURNAMENT_DEFAULTS.startDate,
+  turnierEndDatum: TOURNAMENT_DEFAULTS.endDate,
+  samstagStartzeit: TOURNAMENT_DEFAULTS.saturdayStartTime,
+  samstagEndzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
+  sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
+  sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
   anmeldungAktiv: false,
 };
 

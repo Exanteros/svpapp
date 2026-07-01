@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { createPageMetadata, getSeoData } from "@/lib/seo";
 
+export const dynamic = "force-dynamic";
+
 export function generateMetadata(): Metadata {
   const seo = getSeoData();
 

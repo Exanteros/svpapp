@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { TOURNAMENT_DEFAULTS } from "@/lib/tournament";
 
 export type AdminSectionId =
   | "overview"
@@ -213,11 +214,11 @@ export const DEFAULT_STATS: Statistiken = {
 };
 
 export const DEFAULT_SETTINGS: TurnierEinstellungen = {
-  turnierName: "Rasenturnier Puschendorf 2025",
-  startgeld: 25,
-  schiriGeld: 20,
-  maxTeamsProKategorie: 8,
-  anmeldeschluss: "2025-06-30",
+  turnierName: TOURNAMENT_DEFAULTS.name,
+  startgeld: TOURNAMENT_DEFAULTS.teamFee,
+  schiriGeld: TOURNAMENT_DEFAULTS.missingRefereeFee,
+  maxTeamsProKategorie: TOURNAMENT_DEFAULTS.maxTeamsPerCategorySelection,
+  anmeldeschluss: TOURNAMENT_DEFAULTS.registrationDeadline,
   anzahlFelder: 5,
   adminEmail: "admin@sv-puschendorf.de",
   automatischeEmails: true,
@@ -225,12 +226,12 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   sichtbarkeit: "public",
   zahlungsarten: ["Überweisung", "PayPal", "Barzahlung"],
   datenschutz: true,
-  turnierStartDatum: "2025-07-05",
-  turnierEndDatum: "2025-07-06",
-  samstagStartzeit: "13:00",
-  samstagEndzeit: "17:00",
-  sonntagStartzeit: "10:00",
-  sonntagEndzeit: "17:00",
+  turnierStartDatum: TOURNAMENT_DEFAULTS.startDate,
+  turnierEndDatum: TOURNAMENT_DEFAULTS.endDate,
+  samstagStartzeit: TOURNAMENT_DEFAULTS.saturdayStartTime,
+  samstagEndzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
+  sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
+  sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
   samstagToreSichtbar: false,
   sonntagToreSichtbar: true,
   ergebnisTabellenAktiv: false,
@@ -241,25 +242,25 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
     {
       id: "samstag-mini-e",
       label: "Mini und E-Jugend",
-      datum: "2025-07-05",
-      startzeit: "13:00",
-      endzeit: "17:00",
+      datum: TOURNAMENT_DEFAULTS.startDate,
+      startzeit: TOURNAMENT_DEFAULTS.saturdayStartTime,
+      endzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
       kategorien: ["Mini", "Mini 1", "Mini 2", "Mini 3", "E-Jugend"],
     },
     {
       id: "sonntag-d",
       label: "D-Jugend",
-      datum: "2025-07-06",
-      startzeit: "10:00",
+      datum: TOURNAMENT_DEFAULTS.endDate,
+      startzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
       endzeit: "13:00",
       kategorien: ["D-Jugend weiblich", "D-Jugend männlich"],
     },
     {
       id: "sonntag-cba",
       label: "C-, B- und A-Jugend",
-      datum: "2025-07-06",
+      datum: TOURNAMENT_DEFAULTS.endDate,
       startzeit: "13:15",
-      endzeit: "17:00",
+      endzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
       kategorien: [
         "C-Jugend weiblich",
         "C-Jugend männlich",

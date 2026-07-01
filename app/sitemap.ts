@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 
 import { getPublicRoutesForSeo } from "@/lib/seo";
 
+export const dynamic = "force-dynamic";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const { seo, routes } = getPublicRoutesForSeo();
   const now = new Date();

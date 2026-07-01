@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAdminSettings } from '@/lib/db';
-import { resolveTournamentScheduleSettings } from '@/lib/tournament';
+import { getTournamentYear, resolveTournamentScheduleSettings } from '@/lib/tournament';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +17,7 @@ export async function GET() {
       samstagEndzeit: scheduleSettings.samstagEndzeit,
       sonntagStartzeit: scheduleSettings.sonntagStartzeit,
       sonntagEndzeit: scheduleSettings.sonntagEndzeit,
+      tournamentYear: getTournamentYear(scheduleSettings.turnierStartDatum),
       anmeldungAktiv: settings.anmeldungAktiv !== false
     };
     

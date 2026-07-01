@@ -4,6 +4,8 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import { buildRootMetadata, buildStructuredData } from "@/lib/seo";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 export function generateMetadata(): Metadata {
   return buildRootMetadata();
 }

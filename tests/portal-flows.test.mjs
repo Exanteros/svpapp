@@ -188,3 +188,34 @@ test('public schedule marks youth switches and pauses from time blocks', async (
   assert.match(spielplanPage, /PAUSE/);
   assert.match(spielplanPage, /Wechsel zu/);
 });
+
+test('public year labels come from configured tournament dates', async () => {
+  const rootLayout = await source('app/layout.tsx');
+  const spielplanLayout = await source('app/spielplan/layout.tsx');
+  const ergebnisseLayout = await source('app/ergebnisse/layout.tsx');
+  const anmeldungLayout = await source('app/anmeldung/layout.tsx');
+  const publicSettingsRoute = await source('app/api/public/turnier-einstellungen/route.ts');
+  const appShell = await source('components/app-shell.tsx');
+  const anmeldungPage = await source('app/anmeldung/page.tsx');
+  const email = await source('lib/email.ts');
+  const seo = await source('lib/seo.ts');
+  const tournament = await source('lib/tournament.ts');
+  const db = await source('lib/db.ts');
+
+  for (const file of [rootLayout, spielplanLayout, ergebnisseLayout, anmeldungLayout]) {
+    assert.match(file, /dynamic = ["']force-dynamic["']/);
+  }
+
+  assert.match(publicSettingsRoute, /tournamentYear: getTournamentYear/);
+  assert.match(appShell, /tournamentYear/);
+  assert.doesNotMatch(appShell, /© 2025/);
+  assert.match(anmeldungPage, /Rasenturnier \{tournamentYear\}/);
+  assert.doesNotMatch(anmeldungPage, /Rasenturnier 2025/);
+  assert.match(email, /getEmailTournamentInfo/);
+  assert.doesNotMatch(email, /Rasenturnier Puschendorf 2025/);
+  assert.doesNotMatch(email, /Juli 2025/);
+  assert.match(seo, /replaceTextYear\(seo\.turnierName, seo\.tournamentYear\)/);
+  assert.match(tournament, /replaceTextYear/);
+  assert.match(db, /replaceTextYear\(result\.turnierName/);
+  assert.match(db, /replaceTextYear\(settings\.turnierName/);
+});
