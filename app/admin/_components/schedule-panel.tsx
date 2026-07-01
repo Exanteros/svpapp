@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { applySpielplanTimingOverrides, getDynamicSpielplanTimingProfiles, normalizeSpielplanTimingOverrides } from "@/lib/tournament";
+import { applySpielplanTimingOverrides, getDuplicateFeldnamen, getDynamicSpielplanTimingProfiles, normalizeSpielplanTimingOverrides } from "@/lib/tournament";
 
 import { DangerZone } from "./danger-zone";
 import { formatDate } from "./format";
@@ -67,6 +67,8 @@ export function SchedulePanel({
   );
   const draftSignature = useMemo(() => JSON.stringify(draftFields), [draftFields]);
   const hasUnsavedFields = draftSignature !== savedSignature;
+  const duplicateFeldnamen = useMemo(() => getDuplicateFeldnamen(draftFields), [draftFields]);
+  const hasDuplicateFeldnamen = duplicateFeldnamen.length > 0;
   const savedZeitbloeckeSignature = useMemo(
     () => JSON.stringify(materializeZeitbloecke(settings.spielplanZeitbloecke, settings)),
     [settings]
@@ -75,7 +77,7 @@ export function SchedulePanel({
   const hasUnsavedZeitbloecke = draftZeitbloeckeSignature !== savedZeitbloeckeSignature;
   const autoSpielzeiten = settings.spielzeitenAutomatisch !== false;
   const selectedTimingProfile = settings.spielplanTimingProfil || "standard";
-  const hasUnsavedGeneratorSetup = hasUnsavedFields || hasUnsavedZeitbloecke;
+  const hasUnsavedGeneratorSetup = hasUnsavedFields || hasUnsavedZeitbloecke || hasDuplicateFeldnamen;
   const timingOverrides = useMemo(
     () => normalizeTimingOverridesForAdmin(draftTimingOverrides),
     [draftTimingOverrides]
@@ -307,6 +309,10 @@ export function SchedulePanel({
   }
 
   async function saveFieldDraft() {
+    if (hasDuplicateFeldnamen) {
+      return false;
+    }
+
     const nextFields = materializeFieldsForDays(draftFields, days);
     const saved = await onFeldSettingsSave(nextFields);
 
@@ -587,19 +593,35 @@ export function SchedulePanel({
               })}
             </div>
           </div>
-          <div className="mb-4 flex flex-col gap-2 rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={[
+            "mb-4 flex flex-col gap-2 rounded-[8px] border p-3 sm:flex-row sm:items-center sm:justify-between",
+            hasDuplicateFeldnamen
+              ? "border-destructive/30 bg-destructive/5"
+              : "border-[#d9dec8] bg-[#f6f7f1]",
+          ].join(" ")}>
             <div className="text-sm">
-              <span className="font-medium">{hasUnsavedFields ? "Ungespeicherte Feldeinstellungen" : "Feldeinstellungen gespeichert"}</span>
+              <span className="font-medium">
+                {hasDuplicateFeldnamen
+                  ? "Doppelte Feldnamen"
+                  : hasUnsavedFields
+                    ? "Ungespeicherte Feldeinstellungen"
+                    : "Feldeinstellungen gespeichert"}
+              </span>
               <span className="ml-2 text-muted-foreground">
-                {hasUnsavedFields ? "Speichern, bevor ein neuer Plan generiert wird." : "Die Spielzeiten werden beim Generieren nach Kategorie gesetzt."}
+                {hasDuplicateFeldnamen
+                  ? `Bitte eindeutig machen: ${duplicateFeldnamen.join(", ")}.`
+                  : hasUnsavedFields
+                    ? "Speichern, bevor ein neuer Plan generiert wird."
+                    : "Die Spielzeiten werden beim Generieren nach Kategorie gesetzt."}
               </span>
             </div>
             <Button
               type="button"
               variant={hasUnsavedFields ? "default" : "outline"}
               size="sm"
-              disabled={!hasUnsavedFields || saving}
+              disabled={!hasUnsavedFields || saving || hasDuplicateFeldnamen}
               onClick={saveFieldDraft}
+              title={hasDuplicateFeldnamen ? "Feldnamen müssen eindeutig sein" : undefined}
               className={hasUnsavedFields ? "w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto" : "w-full sm:w-auto"}
             >
               {saving ? "Speichert..." : "Felder speichern"}
@@ -797,10 +819,16 @@ export function SchedulePanel({
               onClick={hasUnsavedTimingOverrides ? saveTimingOverridesAndGenerate : () => onGenerate()}
               disabled={saving || hasUnsavedGeneratorSetup}
               className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
-              title={hasUnsavedGeneratorSetup ? "Bitte zuerst Felder oder Zeitblöcke speichern" : undefined}
+              title={hasDuplicateFeldnamen
+                ? "Feldnamen müssen eindeutig sein"
+                : hasUnsavedGeneratorSetup
+                  ? "Bitte zuerst Felder oder Zeitblöcke speichern"
+                  : undefined}
             >
               <Wand2 className="size-4" />
-              {hasUnsavedGeneratorSetup
+              {hasDuplicateFeldnamen
+                ? "Feldnamen doppelt"
+                : hasUnsavedGeneratorSetup
                 ? "Erst Setup speichern"
                 : hasUnsavedTimingOverrides
                   ? "Spielzeiten speichern & generieren"

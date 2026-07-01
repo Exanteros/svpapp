@@ -68,6 +68,7 @@ import type {
   HelferBedarf,
   RegistrationImportOptions,
   Spiel,
+  SpielFeldRename,
   TurnierEinstellungen,
 } from "./_components/types";
 import { DEFAULT_SETTINGS, DEFAULT_STATS } from "./_components/types";
@@ -307,6 +308,9 @@ export default function AdminPage() {
       const response = await saveFeldEinstellungen(nextSettings);
       const savedFields = response.feldEinstellungen || nextSettings;
       setFeldEinstellungen(savedFields);
+      if (response.fieldRenames?.length) {
+        setSpiele((currentSpiele) => renameSpielFields(currentSpiele, response.fieldRenames || []));
+      }
       setSettings((current) => ({ ...current, anzahlFelder: savedFields.length }));
     });
   }
@@ -734,6 +738,21 @@ function toPdfSettings(settings: TurnierEinstellungen) {
     turnierStartDatum: settings.turnierStartDatum,
     turnierEndDatum: settings.turnierEndDatum,
   };
+}
+
+function renameSpielFields(spiele: Spiel[], fieldRenames: SpielFeldRename[]) {
+  const renameMap = new Map(fieldRenames.map((rename) => [rename.from, rename.to]));
+
+  if (renameMap.size === 0) {
+    return spiele;
+  }
+
+  return spiele
+    .map((spiel) => ({
+      ...spiel,
+      feld: renameMap.get(spiel.feld) || spiel.feld,
+    }))
+    .sort(compareSpiele);
 }
 
 function compareSpiele(first: Spiel, second: Spiel) {

@@ -6,6 +6,7 @@ import type {
   RegistrationImportOptions,
   RegistrationImportResult,
   Spiel,
+  SpielFeldRename,
   TurnierEinstellungen,
 } from "./types";
 
@@ -51,7 +52,12 @@ export async function getFeldEinstellungen() {
 }
 
 export async function saveFeldEinstellungen(feldEinstellungen: FeldEinstellungen[]) {
-  return jsonRequest<{ success: boolean; feldEinstellungen: FeldEinstellungen[] }>("/api/admin/feld-settings", {
+  return jsonRequest<{
+    success: boolean;
+    feldEinstellungen: FeldEinstellungen[];
+    fieldRenames?: SpielFeldRename[];
+    renamedSpiele?: number;
+  }>("/api/admin/feld-settings", {
     method: "POST",
     body: JSON.stringify({ feldEinstellungen }),
   });

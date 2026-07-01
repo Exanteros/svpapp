@@ -698,7 +698,7 @@ export function normalizeFeldEinstellungen(value: unknown): FeldEinstellungen[] 
 
     return {
       id: typeof input.id === 'string' && input.id.trim() ? input.id : `feld${index + 1}`,
-      name: typeof input.name === 'string' && input.name.trim() ? input.name : `Feld ${index + 1}`,
+      name: normalizeFeldName(input.name, `Feld ${index + 1}`),
       ...baseSettings,
       erlaubteJahrgaenge: Array.isArray(input.erlaubteJahrgaenge) ? input.erlaubteJahrgaenge.filter(isNonEmptyString) : [],
       erlaubteJahrgaengeProTag: normalizeJahrgaengeProTag(input.erlaubteJahrgaengeProTag),
@@ -706,6 +706,31 @@ export function normalizeFeldEinstellungen(value: unknown): FeldEinstellungen[] 
       einstellungenProTag: normalizeFeldEinstellungenProTag(input.einstellungenProTag, baseSettings),
     };
   });
+}
+
+export function getDuplicateFeldnamen(value: unknown): string[] {
+  const fields = normalizeFeldEinstellungen(value);
+  const seenNames = new Map<string, string>();
+  const duplicateNames = new Map<string, string>();
+
+  for (const field of fields) {
+    const name = normalizeFeldName(field.name, '');
+    const key = normalizeFeldNameKey(name);
+
+    if (!key) {
+      continue;
+    }
+
+    const firstName = seenNames.get(key);
+
+    if (firstName) {
+      duplicateNames.set(key, firstName);
+    } else {
+      seenNames.set(key, name);
+    }
+  }
+
+  return Array.from(duplicateNames.values()).sort((a, b) => a.localeCompare(b, 'de'));
 }
 
 export function resolveFeldEinstellungenForDate(feld: FeldEinstellungen, datum: string): FeldEinstellungen {
@@ -847,6 +872,21 @@ function normalizeFeldEinstellungenProTag(value: unknown, fallback: FeldTagesEin
     };
     return result;
   }, {});
+}
+
+function normalizeFeldName(value: unknown, fallback: string) {
+  return typeof value === 'string' && value.trim()
+    ? value.replace(/\s+/g, ' ').trim()
+    : fallback;
+}
+
+function normalizeFeldNameKey(value: string) {
+  return normalizeFeldName(value, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase()
+    .trim();
 }
 
 function applyTimingOverride(

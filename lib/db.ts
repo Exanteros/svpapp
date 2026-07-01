@@ -1120,6 +1120,48 @@ export function saveStoredFeldEinstellungen(feldEinstellungen: unknown) {
   return normalizedFeldEinstellungen;
 }
 
+export interface SpielFeldRename {
+  id: string;
+  from: string;
+  to: string;
+}
+
+export function updateSpielFeldnamen(fieldRenames: SpielFeldRename[]) {
+  const db = getDatabase();
+  const normalizedRenames = fieldRenames
+    .map((rename) => ({
+      ...rename,
+      from: String(rename.from || '').trim(),
+      to: String(rename.to || '').trim(),
+    }))
+    .filter((rename) => rename.from && rename.to && rename.from !== rename.to);
+
+  if (normalizedRenames.length === 0) {
+    return { changes: 0 };
+  }
+
+  const caseParts = normalizedRenames.map(() => 'WHEN ? THEN ?').join(' ');
+  const whereParts = normalizedRenames.map(() => '?').join(', ');
+  const values: unknown[] = [];
+
+  for (const rename of normalizedRenames) {
+    values.push(rename.from, rename.to);
+  }
+
+  for (const rename of normalizedRenames) {
+    values.push(rename.from);
+  }
+
+  const update = db.prepare(`
+    UPDATE spiele
+    SET feld = CASE feld ${caseParts} ELSE feld END,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE feld IN (${whereParts})
+  `);
+
+  return update.run(...values);
+}
+
 // Admin-Einstellungen verwalten
 export function getAdminSettings() {
   const db = getDatabase();

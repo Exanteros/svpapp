@@ -63,6 +63,12 @@ export interface FeldEinstellungen extends FeldTagesEinstellungen {
   einstellungenProTag: Record<string, FeldTagesEinstellungen>;
 }
 
+export interface SpielFeldRename {
+  id: string;
+  from: string;
+  to: string;
+}
+
 export interface SpielplanZeitblock {
   id: string;
   label: string;

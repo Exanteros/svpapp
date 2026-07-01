@@ -44,10 +44,12 @@ test('middleware only imports edge-safe session token helpers', async () => {
 
 test('schedule generation, publication and public visibility are preserved', async () => {
   const scheduleRoute = await source('app/api/spielplan/route.ts');
+  const fieldSettingsRoute = await source('app/api/admin/feld-settings/route.ts');
   const publicRoute = await source('app/api/spielplan/get/route.ts');
   const generator = await source('lib/spielplan-generator.ts');
   const tournament = await source('lib/tournament.ts');
   const db = await source('lib/db.ts');
+  const adminPage = await source('app/admin/page.tsx');
   const liveRoute = await source('app/api/spielplan/live/route.ts');
   const schedulePanel = await source('app/admin/_components/schedule-panel.tsx');
   const scheduleDragBoard = await source('app/admin/_components/schedule-drag-board.tsx');
@@ -73,12 +75,21 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
   assert.match(tournament, /normalizeSpielplanTimingOverrides/);
   assert.match(tournament, /applySpielplanTimingOverrides/);
+  assert.match(tournament, /getDuplicateFeldnamen/);
   assert.match(tournament, /capacityMinutes/);
   assert.match(db, /spielplan_timing_overrides/);
+  assert.match(db, /updateSpielFeldnamen/);
+  assert.match(fieldSettingsRoute, /getFieldRenames/);
+  assert.match(fieldSettingsRoute, /duplicateFeldnamen/);
+  assert.match(fieldSettingsRoute, /updateSpielFeldnamen/);
+  assert.match(fieldSettingsRoute, /notifySpielplanChanged/);
+  assert.match(adminPage, /renameSpielFields/);
   assert.match(liveRoute, /applySpielplanTimingOverrides/);
   assert.match(schedulePanel, /Spielzeit-Vorschlag auswählen/);
   assert.match(schedulePanel, /Spielzeiten feinjustieren/);
   assert.match(schedulePanel, /Spielzeiten speichern & generieren/);
+  assert.match(schedulePanel, /Feldnamen doppelt/);
+  assert.match(schedulePanel, /getDuplicateFeldnamen/);
   assert.match(schedulePanel, /dynamicTimingProfiles/);
   assert.match(schedulePanel, /draftTimingOverrides/);
   assert.doesNotMatch(schedulePanel, /SPIELPLAN_TIMING_PROFILES/);
