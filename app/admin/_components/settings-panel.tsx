@@ -1,6 +1,6 @@
 "use client";
 
-import { Save } from "lucide-react";
+import { DatabaseBackup, Download, Save, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,13 +14,33 @@ import type { TurnierEinstellungen } from "./types";
 interface SettingsPanelProps {
   settings: TurnierEinstellungen;
   saving: boolean;
+  backupBusy: boolean;
   onChange: (settings: TurnierEinstellungen) => void;
   onSave: () => void;
+  onDownloadBackup: () => void;
+  onRestoreBackup: (file: File) => void;
 }
 
-export function SettingsPanel({ settings, saving, onChange, onSave }: SettingsPanelProps) {
+export function SettingsPanel({
+  settings,
+  saving,
+  backupBusy,
+  onChange,
+  onSave,
+  onDownloadBackup,
+  onRestoreBackup,
+}: SettingsPanelProps) {
   function update<K extends keyof TurnierEinstellungen>(key: K, value: TurnierEinstellungen[K]) {
     onChange({ ...settings, [key]: value });
+  }
+
+  function handleRestoreFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (file) {
+      onRestoreBackup(file);
+    }
   }
 
   return (
@@ -155,6 +175,40 @@ export function SettingsPanel({ settings, saving, onChange, onSave }: SettingsPa
           <div className="flex items-center justify-between rounded-md border p-3 sm:col-span-2">
             <Label htmlFor="datenschutz">Datenschutz bestätigt erforderlich</Label>
             <Switch id="datenschutz" checked={settings.datenschutz} onCheckedChange={(value) => update("datenschutz", value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[8px]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <DatabaseBackup className="size-5 text-muted-foreground" />
+            Backups und Wiederherstellung
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="max-w-3xl text-sm leading-6 text-muted-foreground">
+            Beim Start wird automatisch ein Tagesbackup im Datenbank-Backupordner abgelegt. Zusätzlich kannst du hier
+            jederzeit ein frisches SQLite-Backup herunterladen oder eine geprüfte Backup-Datei wiederherstellen.
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
+            <Button type="button" variant="outline" onClick={onDownloadBackup} disabled={backupBusy}>
+              <Download className="size-4" />
+              Backup laden
+            </Button>
+            <Button type="button" variant="secondary" asChild disabled={backupBusy}>
+              <label className="cursor-pointer">
+                <Upload className="size-4" />
+                Backup einspielen
+                <input
+                  type="file"
+                  accept=".sqlite,.sqlite3,.db,application/vnd.sqlite3,application/octet-stream"
+                  className="sr-only"
+                  disabled={backupBusy}
+                  onChange={handleRestoreFile}
+                />
+              </label>
+            </Button>
           </div>
         </CardContent>
       </Card>

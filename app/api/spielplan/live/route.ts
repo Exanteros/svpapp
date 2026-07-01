@@ -9,7 +9,12 @@ import {
 } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
 import { notifySpielplanChanged } from '@/lib/spielplan-events';
-import { areScoresPublicForDate, formatScheduleCategoryLabel, resolveFeldEinstellungenForDate } from '@/lib/tournament';
+import {
+  areScoresPublicForDate,
+  formatScheduleCategoryLabel,
+  getSpielzeitRegelForKategorie,
+  resolveFeldEinstellungenForDate,
+} from '@/lib/tournament';
 
 interface Spiel {
   id: string;
@@ -46,15 +51,18 @@ export async function GET(request: NextRequest) {
     const enhancedGames = allGames.map(spiel => {
       const feldInfo = feldEinstellungen.find(f => f.name === spiel.feld);
       const fieldForGame = feldInfo ? resolveFeldEinstellungenForDate(feldInfo, spiel.datum) : null;
+      const categoryTiming = settings.spielzeitenAutomatisch !== false
+        ? getSpielzeitRegelForKategorie(spiel.kategorie)
+        : null;
       const visibleSpiel = scoresVisible ? spiel : { ...spiel, ergebnis: null, tore_team1: null, tore_team2: null };
 
       return {
         ...visibleSpiel,
         kategorie: formatScheduleCategoryLabel(spiel.kategorie),
-        spielzeit: fieldForGame?.spielzeit || 15,
-        pausenzeit: fieldForGame?.pausenzeit || 3,
-        halbzeitpause: fieldForGame?.halbzeitpause || 0,
-        zweiHalbzeiten: fieldForGame?.zweiHalbzeiten || false,
+        spielzeit: categoryTiming?.spielzeit ?? fieldForGame?.spielzeit ?? 15,
+        pausenzeit: categoryTiming?.pausenzeit ?? fieldForGame?.pausenzeit ?? 3,
+        halbzeitpause: categoryTiming?.halbzeitpause ?? fieldForGame?.halbzeitpause ?? 0,
+        zweiHalbzeiten: categoryTiming?.zweiHalbzeiten ?? fieldForGame?.zweiHalbzeiten ?? false,
       };
     });
 

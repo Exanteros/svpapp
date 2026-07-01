@@ -142,6 +142,51 @@ export async function saveSettings(settings: TurnierEinstellungen) {
   });
 }
 
+export async function downloadDatabaseBackup() {
+  const response = await fetch("/api/admin/backups", {
+    method: "GET",
+    credentials: "same-origin",
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new AdminApiError(data.error || data.message || `HTTP ${response.status}`, response.status);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const filenameMatch = /filename="([^"]+)"/.exec(disposition);
+  const filename = filenameMatch?.[1] || `svp-backup-${new Date().toISOString().slice(0, 10)}.sqlite`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function restoreDatabaseBackup(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/admin/backups", {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new AdminApiError(data.error || data.message || `HTTP ${response.status}`, response.status);
+  }
+
+  return data as { success: boolean; message: string; preRestoreBackupPath: string };
+}
+
 export async function getSpielplan() {
   const data = await jsonRequest<{ spiele: Spiel[] }>("/api/spielplan");
 
@@ -152,7 +197,20 @@ export async function generateSpielplan(
   settings: TurnierEinstellungen,
   feldEinstellungen: FeldEinstellungen[]
 ) {
-  const data = await jsonRequest<{ spiele: Spiel[] }>("/api/spielplan", {
+  const data = await jsonRequest<{
+    spiele: Spiel[];
+    feldEinstellungen?: FeldEinstellungen[];
+    spielzeitOptimierung?: Array<{
+      datum: string;
+      spielzeit: number;
+      pausenzeit: number;
+      spiele: number;
+      ausgelasseneSpiele: number;
+      aktiveFelder: number;
+      slots: number;
+      regelText?: string;
+    }>;
+  }>("/api/spielplan", {
     method: "POST",
     body: JSON.stringify({
       action: "generate",
@@ -162,7 +220,11 @@ export async function generateSpielplan(
     }),
   });
 
-  return data.spiele || [];
+  return {
+    spiele: data.spiele || [],
+    feldEinstellungen: data.feldEinstellungen,
+    spielzeitOptimierung: data.spielzeitOptimierung || [],
+  };
 }
 
 export async function updateSpiel(spielId: string, spiel: Partial<Spiel>) {

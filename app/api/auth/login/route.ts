@@ -8,8 +8,13 @@ const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { email, password } = body || {};
-    const attemptKey = getLoginAttemptKey(request, email);
+    const { email, username, password } = body || {};
+    const identifier = typeof email === 'string'
+      ? email
+      : typeof username === 'string'
+        ? username
+        : '';
+    const attemptKey = getLoginAttemptKey(request, identifier);
     const rateLimit = checkLoginRateLimit(attemptKey);
 
     if (!rateLimit.allowed) {
@@ -25,15 +30,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate input
-    if (!email || !password) {
+    if (!identifier || !password) {
       return NextResponse.json(
-        { error: 'Email und Passwort sind erforderlich' },
+        { error: 'Benutzername/E-Mail und Passwort sind erforderlich' },
         { status: 400 }
       );
     }
 
     // Verify credentials
-    if (!verifyCredentials(email, password)) {
+    if (!verifyCredentials(identifier, password)) {
       recordFailedLogin(attemptKey);
       return NextResponse.json(
         { error: 'Ungültige Anmeldedaten' },
@@ -42,10 +47,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Create session
-    const sessionToken = await createSession(email);
+    const sessionToken = await createSession(identifier);
     loginAttempts.delete(attemptKey);
 
-    console.log('✅ Login erfolgreich für:', email);
+    console.log('✅ Login erfolgreich für:', identifier);
 
     return NextResponse.json({
       success: true,

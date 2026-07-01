@@ -60,10 +60,6 @@ export function ScheduleDragBoard({
     () => getFieldsForDay(gamesForDay, feldEinstellungen, activeDate),
     [activeDate, feldEinstellungen, gamesForDay]
   );
-  const timeSlots = useMemo(
-    () => getTimeSlotsForDay(gamesForDay, settings, activeDate),
-    [activeDate, gamesForDay, settings]
-  );
   const gamesByCell = useMemo(() => {
     const result = new Map<string, Spiel[]>();
 
@@ -146,45 +142,22 @@ export function ScheduleDragBoard({
               </Badge>
               <span className="inline-flex items-center gap-1">
                 <GripVertical className="size-3.5" />
-                Karte ziehen, in anderem Feld/Zeitfenster ablegen.
+                Karte ziehen und auf eine andere Feldzeit ablegen.
               </span>
             </div>
             <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-              <div className="overflow-x-auto pb-2">
-                <div
-                  className="grid min-w-[860px] gap-2"
-                  style={{
-                    gridTemplateColumns: `120px repeat(${timeSlots.length}, minmax(150px, 1fr))`,
-                  }}
-                >
-                  <div className="sticky left-0 z-10 rounded-[8px] border bg-[#f6f7f1] p-3 text-xs font-medium text-[#4f5d2f]">
-                    Feld
-                  </div>
-                  {timeSlots.map((time) => (
-                    <div key={time} className="rounded-[8px] border bg-[#f6f7f1] p-3">
-                      <div className="flex items-center gap-1.5 text-sm font-semibold">
-                        <Clock className="size-4 text-[#5e6d35]" />
-                        {time}
-                      </div>
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <Megaphone className="size-3.5" />
-                        Ansage {subtractMinutes(time, ANNOUNCEMENT_OFFSET_MINUTES)}
-                      </div>
-                    </div>
-                  ))}
-
-                  {fields.map((field) => (
-                    <FieldRow
-                      key={field}
-                      field={field}
-                      timeSlots={timeSlots}
-                      activeDate={activeDate}
-                      gamesByCell={gamesByCell}
-                      disabled={saving}
-                      pendingId={pendingId}
-                    />
-                  ))}
-                </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {fields.map((field) => (
+                  <FieldLane
+                    key={field}
+                    field={field}
+                    games={gamesForDay.filter((spiel) => spiel.feld === field)}
+                    activeDate={activeDate}
+                    gamesByCell={gamesByCell}
+                    disabled={saving}
+                    pendingId={pendingId}
+                  />
+                ))}
               </div>
             </DndContext>
           </>
@@ -194,51 +167,68 @@ export function ScheduleDragBoard({
   );
 }
 
-function FieldRow({
+function FieldLane({
   field,
-  timeSlots,
+  games,
   activeDate,
   gamesByCell,
   disabled,
   pendingId,
 }: {
   field: string;
-  timeSlots: string[];
+  games: Spiel[];
   activeDate: string;
   gamesByCell: Map<string, Spiel[]>;
   disabled: boolean;
   pendingId: string | null;
 }) {
+  const times = unique(games.map((spiel) => spiel.zeit).filter(Boolean)).sort();
+
   return (
-    <>
-      <div className="sticky left-0 z-10 flex min-h-[112px] items-start rounded-[8px] border bg-white p-3 text-sm font-medium">
-        <span className="inline-flex min-w-0 items-center gap-2 break-words">
+    <section className="min-w-0 overflow-hidden rounded-[8px] border bg-[#f6f7f1]">
+      <div className="flex items-center justify-between gap-3 border-b bg-white px-3 py-2">
+        <div className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
           <MapPin className="size-4 shrink-0 text-[#5e6d35]" />
-          {field}
-        </span>
+          <span className="min-w-0 break-words">{field}</span>
+        </div>
+        <Badge variant="outline" className="shrink-0 border-[#d9dec8] text-[#4f5d2f]">
+          {games.length} Spiele
+        </Badge>
       </div>
-      {timeSlots.map((time) => {
+      <div className="grid gap-2 p-2">
+        {times.length === 0 ? (
+          <div className="rounded-[8px] border border-dashed bg-white p-4 text-sm text-muted-foreground">
+            Keine Spiele auf diesem Feld.
+          </div>
+        ) : times.map((time) => {
         const id = createCellId(activeDate, time, field);
         const games = gamesByCell.get(getCellKey(activeDate, time, field)) || [];
 
         return (
           <ScheduleDropCell key={id} id={id}>
-            {games.length === 0 ? (
-              <span className="text-xs text-muted-foreground">frei</span>
-            ) : (
-              games.map((spiel) => (
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 font-semibold text-[#4f5d2f]">
+                <Clock className="size-3.5" />
+                {time}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Megaphone className="size-3.5" />
+                Ansage {subtractMinutes(time, ANNOUNCEMENT_OFFSET_MINUTES)}
+              </span>
+            </div>
+            {games.map((spiel) => (
                 <ScheduleGameCard
                   key={spiel.id}
                   spiel={spiel}
                   disabled={disabled}
                   pending={pendingId === spiel.id}
                 />
-              ))
-            )}
+            ))}
           </ScheduleDropCell>
         );
-      })}
-    </>
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -249,7 +239,7 @@ function ScheduleDropCell({ id, children }: { id: string; children: ReactNode })
     <div
       ref={setNodeRef}
       className={cn(
-        "grid min-h-[112px] content-start gap-2 rounded-[8px] border border-dashed bg-[#fbfbf8] p-2 transition-colors",
+        "grid content-start gap-2 rounded-[8px] border border-dashed bg-[#fbfbf8] p-2 transition-colors",
         isOver && "border-[#5e6d35] bg-[#eef1e5]"
       )}
     >

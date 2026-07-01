@@ -1,4 +1,5 @@
 import { getSession } from '@/lib/session';
+import { isAdminUserActive } from '@/lib/passkey-manager';
 import { NextRequest } from 'next/server';
 import { cache } from 'react';
 
@@ -17,6 +18,10 @@ export const verifySession = cache(async () => {
     return { isAuth: false, userId: null };
   }
 
+  if (!isAdminUserActive(session.userId)) {
+    return { isAuth: false, userId: null };
+  }
+
   return { isAuth: true, userId: session.userId };
 });
 
@@ -27,6 +32,10 @@ export async function getUser(request?: NextRequest) {
   const session = await getSession(request);
   
   if (!session?.userId) {
+    return null;
+  }
+
+  if (!isAdminUserActive(session.userId)) {
     return null;
   }
 

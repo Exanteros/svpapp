@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAnmeldung, getAdminSettings, getAllAnmeldungen, getStatistiken, type AnmeldungData } from '@/lib/db';
+import { createAnmeldung, getAdminSettings, getAllAnmeldungen, getStatistiken, saveStoredFeldEinstellungen, type AnmeldungData } from '@/lib/db';
 import { sendConfirmationEmail, sendAdminNotification } from '@/lib/email';
 import { verifyApiAuth } from '@/lib/dal';
 import { formatRegistrationValidationError, registrationRequestSchema } from '@/lib/registration-validation';
-import { generateSpielplan } from '@/lib/spielplan-generator';
+import { generateSpielplan, optimizeSpielzeitenForSchedule } from '@/lib/spielplan-generator';
 import { calculateRegistrationCost } from '@/lib/tournament';
 
 export async function GET(request: NextRequest) {
@@ -76,14 +76,20 @@ export async function POST(request: NextRequest) {
       anmeldungId
     };
 
-    const confirmationResult = await sendConfirmationEmail(emailData);
-    const adminNotificationResult = await sendAdminNotification(emailData);
+    const emailsEnabled = settings.automatischeEmails !== false;
+    const confirmationResult = emailsEnabled
+      ? await sendConfirmationEmail(emailData)
+      : { success: false as const, previewUrl: undefined };
+    const adminNotificationResult = emailsEnabled
+      ? await sendAdminNotification(emailData)
+      : { success: false as const, previewUrl: undefined };
 
     console.log('✅ Neue Anmeldung erfolgreich:', {
       id: anmeldungId,
       verein: registration.verein,
       teams: registration.teams.length,
       kosten,
+      emailsEnabled,
       emailSent: confirmationResult.success,
       adminNotified: adminNotificationResult.success
     });
@@ -94,7 +100,8 @@ export async function POST(request: NextRequest) {
         message: 'Anmeldung erfolgreich!',
         anmeldungId,
         emailSent: confirmationResult.success,
-        previewUrl: confirmationResult.previewUrl // Nur für Entwicklung
+        emailsEnabled,
+        previewUrl: process.env.NODE_ENV === 'development' ? confirmationResult.previewUrl : undefined
       },
       { status: 201 }
     );
@@ -113,7 +120,20 @@ function regenerateSpielplanAfterRegistration() {
   }
 
   try {
-    const spiele = generateSpielplan({ replaceExisting: true });
+    const settings = getAdminSettings();
+    const optimized = settings.spielzeitenAutomatisch !== false
+      ? optimizeSpielzeitenForSchedule({ settings })
+      : null;
+    const spiele = generateSpielplan({
+      settings,
+      replaceExisting: true,
+      feldEinstellungen: optimized?.feldEinstellungen,
+    });
+
+    if (optimized) {
+      saveStoredFeldEinstellungen(optimized.feldEinstellungen);
+    }
+
     console.log('✅ Spielplan automatisch aktualisiert nach neuer Anmeldung:', spiele.length);
   } catch (error) {
     console.warn('⚠️ Spielplan-Update nach Anmeldung fehlgeschlagen:', error);

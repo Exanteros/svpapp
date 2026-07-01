@@ -3,7 +3,7 @@
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatScheduleCategoryLabel } from './tournament';
+import { createTeamDisplayNameMap, formatScheduleCategoryLabel, formatTeamDisplayName } from './tournament';
 
 export interface Spiel {
   id: string;
@@ -30,6 +30,7 @@ export function exportSpielplanCSV(spiele: Spiel[], config: TurnierConfig) {
   console.log('📊 Exportiere Spielplan als CSV...');
   
   try {
+    const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
     // CSV-Header
     const headers = ['Datum', 'Zeit', 'Feld', 'Kategorie', 'Team 1', 'Team 2', 'Status', 'Ergebnis'];
     
@@ -39,8 +40,8 @@ export function exportSpielplanCSV(spiele: Spiel[], config: TurnierConfig) {
       spiel.zeit,
       spiel.feld,
       formatScheduleCategoryLabel(spiel.kategorie),
-      spiel.team1,
-      spiel.team2,
+      formatTeamDisplayName(spiel.team1, teamDisplayNames),
+      formatTeamDisplayName(spiel.team2, teamDisplayNames),
       spiel.status,
       spiel.ergebnis || ''
     ]);
@@ -126,6 +127,7 @@ function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
   const spieleNachTagUndFeld = groupGamesByDayAndField(spiele);
   const tage = Object.keys(spieleNachTagUndFeld).sort(sortDates);
   const fieldColors = createFieldColorMap(spiele);
+  const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
 
   if (tage.length === 0) {
     drawEmptySpielplanPage(doc, config);
@@ -147,6 +149,7 @@ function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
 
       const fieldGames = spieleNachTagUndFeld[tag][feld];
       const fieldColor = fieldColors.get(feld) || FIELD_COLORS[0];
+      const headerCategoryTitle = getHeaderCategoryTitle(fieldGames);
 
       const pageWidth = getPageWidth(doc);
       const availableWidth = pageWidth - PDF_MARGIN_X * 2;
@@ -160,8 +163,8 @@ function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
         .map(spiel => [
           spiel.zeit,
           cleanCategoryLabel(spiel.kategorie),
-          spiel.team1,
-          spiel.team2,
+          formatTeamDisplayName(spiel.team1, teamDisplayNames),
+          formatTeamDisplayName(spiel.team2, teamDisplayNames),
           formatResult(spiel.ergebnis)
         ]);
 
@@ -205,7 +208,7 @@ function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
           4: { cellWidth: resultWidth, halign: 'center' }
         },
         willDrawPage: function() {
-          drawSpielplanHeader(doc, config, dayTitle, feld, fieldGames.length, fieldColor);
+          drawSpielplanHeader(doc, config, dayTitle, feld, fieldGames.length, fieldColor, headerCategoryTitle);
         },
         didDrawPage: function() {
           drawSpielplanFooter(doc, `${dayTitle} | ${feld}`);
@@ -245,7 +248,8 @@ function drawSpielplanHeader(
   dayTitle: string,
   feld: string,
   gameCount: number,
-  fieldColor: FieldColor = FIELD_COLORS[0]
+  fieldColor: FieldColor = FIELD_COLORS[0],
+  categoryTitle = ''
 ) {
   const pageWidth = getPageWidth(doc);
   const createdAt = new Date().toLocaleDateString('de-DE');
@@ -260,7 +264,14 @@ function drawSpielplanHeader(
   doc.setFontSize(14);
   doc.text(config.turnierName, PDF_MARGIN_X, PDF_MARGIN_TOP + 3);
 
-  doc.setFontSize(11);
+  if (categoryTitle) {
+    doc.setFontSize(18);
+    doc.setTextColor(fieldColor.text[0], fieldColor.text[1], fieldColor.text[2]);
+    doc.text(fitText(doc, categoryTitle, 104), pageWidth / 2, PDF_MARGIN_TOP + 6.4, { align: 'center' });
+  }
+
+  doc.setTextColor(53, 64, 31);
+  doc.setFontSize(9.6);
   doc.text(dayTitle, PDF_MARGIN_X, PDF_MARGIN_TOP + 10);
 
   doc.setFillColor(fieldColor.fill[0], fieldColor.fill[1], fieldColor.fill[2]);
@@ -329,6 +340,51 @@ function formatGermanDayTitle(dateString: string) {
 
 function cleanCategoryLabel(category: string) {
   return formatScheduleCategoryLabel(category);
+}
+
+function getHeaderCategoryTitle(spiele: Spiel[]) {
+  const labels = Array.from(new Set(spiele.map((spiel) => cleanCategoryLabel(spiel.kategorie)).filter(Boolean)));
+
+  if (labels.length === 0) {
+    return '';
+  }
+
+  if (labels.length === 1) {
+    return labels[0];
+  }
+
+  const baseLabels = Array.from(new Set(labels.map(toBaseCategoryLabel)));
+  const compactLabels = baseLabels.length <= 3 ? baseLabels : labels;
+
+  if (compactLabels.length <= 3) {
+    return compactLabels.join(' / ');
+  }
+
+  return 'Mehrere Jugenden';
+}
+
+function toBaseCategoryLabel(label: string) {
+  if (/^mini\b/i.test(label)) return 'Mini';
+  if (/^e-jugend\b/i.test(label)) return 'E-Jugend';
+  if (/^d-jugend\b/i.test(label)) return 'D-Jugend';
+  if (/^c-jugend\b/i.test(label)) return 'C-Jugend';
+  if (/^b-jugend\b/i.test(label)) return 'B-Jugend';
+  if (/^a-jugend\b/i.test(label)) return 'A-Jugend';
+  return label;
+}
+
+function fitText(doc: jsPDF, text: string, maxWidth: number) {
+  if (doc.getTextWidth(text) <= maxWidth) {
+    return text;
+  }
+
+  let next = text;
+
+  while (next.length > 1 && doc.getTextWidth(`${next}...`) > maxWidth) {
+    next = next.slice(0, -1);
+  }
+
+  return `${next}...`;
 }
 
 function formatResult(result: string | undefined) {

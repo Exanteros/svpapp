@@ -36,8 +36,8 @@ export function AdminShell({
   const [tabletSidebarOpen, setTabletSidebarOpen] = useState(false);
 
   return (
-    <div className="pwa-shell min-h-screen overflow-x-hidden bg-[#f6f7f1] text-foreground">
-      <header className="pwa-header sticky top-0 z-40 border-b border-[#d9dec8] bg-[#fbfbf8]/92 backdrop-blur supports-[backdrop-filter]:bg-[#fbfbf8]/82">
+    <div className="pwa-shell min-h-screen overflow-x-hidden bg-background text-foreground">
+      <header className="pwa-header sticky top-0 z-40 border-b border-border/70 bg-background/82 backdrop-blur-xl supports-[backdrop-filter]:bg-background/72">
         <div className="mx-auto flex min-h-16 max-w-7xl flex-col gap-3 px-3 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <Button asChild variant="ghost" size="sm" className="shrink-0 text-muted-foreground">
@@ -49,7 +49,7 @@ export function AdminShell({
             <div className="hidden h-8 w-px bg-border sm:block" />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#d9dec8] bg-white shadow-sm">
+                <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
                   <Image
                     src="/logo.png"
                     alt="SV Puschendorf"
@@ -66,7 +66,7 @@ export function AdminShell({
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <Badge variant="outline" className="hidden border-[#d9dec8] bg-[#f6f7f1] text-[#4f5d2f] sm:inline-flex">
+            <Badge variant="outline" className="hidden sm:inline-flex">
               Admin
             </Badge>
             <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading} className="w-full sm:w-auto">
@@ -88,10 +88,10 @@ export function AdminShell({
         )}
       >
         <aside className="hidden md:block xl:hidden">
-          <div className="pwa-sticky-panel sticky top-24 rounded-[8px] border bg-white p-2 shadow-xs">
+          <div className="pwa-sticky-panel sticky top-24 rounded-xl border border-border/70 bg-card/90 p-2 shadow-sm backdrop-blur">
             <div className={cn("mb-2 flex items-center", tabletSidebarOpen ? "justify-between gap-2" : "justify-center")}>
               {tabletSidebarOpen && (
-                <span className="min-w-0 truncate px-2 text-sm font-medium text-[#35401f]">Admin</span>
+                <span className="min-w-0 truncate px-2 text-sm font-medium text-foreground">Admin</span>
               )}
               <Button
                 type="button"
@@ -115,11 +115,11 @@ export function AdminShell({
                       onClick={() => onSectionChange(item.id)}
                       aria-label={item.label}
                       className={cn(
-                        "flex min-w-0 items-center rounded-md text-sm transition-colors",
+                        "flex min-w-0 items-center rounded-lg text-sm transition-all duration-200",
                         tabletSidebarOpen ? "gap-3 px-3 py-3 text-left" : "justify-center px-2 py-3",
                         activeSection === item.id
-                          ? "bg-[#eef1e5] text-[#35401f]"
-                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       )}
                     >
                       <item.icon className="size-4 shrink-0" />
@@ -151,7 +151,7 @@ export function AdminShell({
         </aside>
 
         <aside className="hidden xl:block">
-          <div className="pwa-sticky-panel sticky top-24 rounded-[8px] border bg-white p-2 shadow-xs">
+          <div className="pwa-sticky-panel sticky top-24 rounded-xl border border-border/70 bg-card/90 p-2 shadow-sm backdrop-blur">
             <nav className="grid gap-1">
               {navItems.map((item) => (
                 <button
@@ -159,10 +159,10 @@ export function AdminShell({
                   type="button"
                   onClick={() => onSectionChange(item.id)}
                   className={cn(
-                    "flex items-start gap-3 rounded-md px-3 py-3 text-left text-sm transition-colors",
+                    "flex items-start gap-3 rounded-lg px-3 py-3 text-left text-sm transition-all duration-200",
                     activeSection === item.id
-                      ? "bg-[#eef1e5] text-[#35401f]"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <item.icon className="mt-0.5 size-4 shrink-0" />
@@ -179,7 +179,7 @@ export function AdminShell({
         <main className="min-w-0">
           <div className="mb-5 md:hidden">
             <Select value={activeSection} onValueChange={(value) => onSectionChange(value as AdminSectionId)}>
-              <SelectTrigger className="bg-white">
+                <SelectTrigger className="bg-card">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -193,7 +193,7 @@ export function AdminShell({
           </div>
 
           <div className="mb-5 sm:mb-6">
-            <p className="text-sm font-medium text-[#5e6d35]">{activeItem.label}</p>
+            <p className="text-sm font-medium text-muted-foreground">{activeItem.label}</p>
             <h2 className="mt-1 text-xl font-semibold tracking-normal sm:text-3xl">{activeItem.description}</h2>
           </div>
 

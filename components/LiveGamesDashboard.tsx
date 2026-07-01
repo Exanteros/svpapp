@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,7 +62,17 @@ interface LiveGamesDashboardProps {
   onOpenResults?: () => void;
 }
 
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+};
+
 export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboardProps = {}) {
+  const dashboardRef = useRef<HTMLDivElement | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [liveGames, setLiveGames] = useState<LiveGame[]>([]);
   const [nextGames, setNextGames] = useState<LiveGame[]>([]);
@@ -71,6 +81,22 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
   const [currentTimeSlot, setCurrentTimeSlot] = useState<string>('');
   const [nextTimeSlot, setNextTimeSlot] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      const fullscreenDocument = document as FullscreenDocument;
+      const activeElement = document.fullscreenElement || fullscreenDocument.webkitFullscreenElement || null;
+      setIsFullscreen(activeElement === dashboardRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState);
+    };
+  }, []);
 
   // Lade Feldeinstellungen
   useEffect(() => {
@@ -561,6 +587,57 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
     return 'bg-[#87935d]';
   };
 
+  const toggleFullscreen = async () => {
+    const target = dashboardRef.current as FullscreenElement | null;
+    const fullscreenDocument = document as FullscreenDocument;
+    const activeElement = document.fullscreenElement || fullscreenDocument.webkitFullscreenElement || null;
+    const shouldEnterFullscreen = activeElement !== target && !isFullscreen;
+
+    if (!target) {
+      return;
+    }
+
+    if (isFullscreen && activeElement !== target) {
+      setIsFullscreen(false);
+      return;
+    }
+
+    try {
+      if (activeElement === target) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+          return;
+        }
+
+        if (fullscreenDocument.webkitExitFullscreen) {
+          await fullscreenDocument.webkitExitFullscreen();
+          return;
+        }
+
+        setIsFullscreen(false);
+        return;
+      }
+
+      if (target.requestFullscreen) {
+        await target.requestFullscreen();
+        return;
+      }
+
+      if (target.webkitRequestFullscreen) {
+        await target.webkitRequestFullscreen();
+        return;
+      }
+
+      setIsFullscreen((value) => !value);
+    } catch (error) {
+      console.error('Vollbild konnte nicht umgeschaltet werden:', error);
+      setIsFullscreen(shouldEnterFullscreen);
+      if (!shouldEnterFullscreen) {
+        toast.error('Vollbildmodus konnte nicht beendet werden');
+      }
+    }
+  };
+
   if (loading) {
     return (
       <Card className="bg-white border-stone-200 shadow-sm">
@@ -573,7 +650,10 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
   }
 
   return (
-    <div className={`space-y-4 sm:space-y-6 ${isFullscreen ? 'fixed inset-0 bg-white z-50 overflow-auto p-2 sm:p-4' : ''}`}>
+    <div
+      ref={dashboardRef}
+      className={`space-y-4 sm:space-y-6 ${isFullscreen ? 'fixed inset-0 z-[80] overflow-auto bg-background p-2 sm:p-4' : ''}`}
+    >
       {/* Header mit Uhr */}
       <Card className="border-[#d9dec8] bg-[#f6f7f1] shadow-sm">
         <CardContent className="p-3 sm:p-6 text-center">
@@ -585,7 +665,7 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsFullscreen(!isFullscreen)}
+              onClick={toggleFullscreen}
               className="w-full border-[#d9dec8] text-[#4f5d2f] hover:bg-[#eef1e5] sm:w-auto"
             >
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}

@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSpielplanLiveEvents } from "@/components/SpielplanLiveRefresh";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatScheduleCategoryLabel } from "@/lib/tournament";
+import { createTeamDisplayNameMap, formatScheduleCategoryLabel, formatTeamDisplayName } from "@/lib/tournament";
 import { cn } from "@/lib/utils";
 
 interface Spiel {
@@ -34,6 +34,7 @@ interface Spiel {
   ergebnis?: string | null;
   tore_team1?: number | null;
   tore_team2?: number | null;
+  schiedsrichter?: string | null;
 }
 
 interface SpielplanDay {
@@ -150,8 +151,26 @@ function groupByTime(spiele: Spiel[]) {
   return spiele.reduce<Record<string, Spiel[]>>((result, spiel) => {
     result[spiel.zeit] ??= [];
     result[spiel.zeit].push(spiel);
+    result[spiel.zeit].sort(compareGamesByField);
     return result;
   }, {});
+}
+
+function compareGamesByField(first: Spiel, second: Spiel) {
+  return compareFieldNames(first.feld, second.feld)
+    || first.kategorie.localeCompare(second.kategorie, "de")
+    || first.team1.localeCompare(second.team1, "de");
+}
+
+function compareFieldNames(first: string, second: string) {
+  const firstNumber = Number(first.match(/\d+/)?.[0]);
+  const secondNumber = Number(second.match(/\d+/)?.[0]);
+
+  if (Number.isFinite(firstNumber) && Number.isFinite(secondNumber) && firstNumber !== secondNumber) {
+    return firstNumber - secondNumber;
+  }
+
+  return first.localeCompare(second, "de");
 }
 
 function getCategoryCount(spiele: Spiel[]) {
@@ -205,6 +224,10 @@ export default function SpielplanPage() {
   useSpielplanLiveEvents(loadSpielplan);
 
   const allGames = useMemo(() => getAllGames(spielplanData), [spielplanData]);
+  const teamDisplayNames = useMemo(
+    () => createTeamDisplayNameMap(allGames.flatMap((spiel) => [spiel.team1, spiel.team2])),
+    [allGames]
+  );
 
   const nextGameIds = useMemo(() => {
     const upcomingGames = allGames
@@ -273,7 +296,7 @@ export default function SpielplanPage() {
   return (
     <div className="min-h-screen bg-[#fbfbf8]">
       <section className="border-b border-[#e1e4d8] bg-[#f6f7f1]">
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end lg:py-10">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end lg:py-10">
           <div>
             <div className="mb-4 flex flex-wrap gap-2">
               <Badge variant="outline" className="gap-1.5 border-[#d9dec8] bg-white/80 text-[#4f5d2f]">
@@ -311,7 +334,7 @@ export default function SpielplanPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {previewDraft && (
           <div className="mb-5 rounded-[8px] border border-[#d9dec8] bg-white p-4 text-sm text-[#4f5d2f]">
             Admin-Entwurfsvorschau. Öffentlich erscheint der Plan erst nach Veröffentlichung.
@@ -413,13 +436,15 @@ export default function SpielplanPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {spieleInSlot.map((spiel) => {
                       const status = getVisualStatus(spiel, nextGameIds);
                       const statusMeta = getStatusMeta(status);
                       const StatusIcon = statusMeta.icon;
                       const showScore = ["laufend", "halbzeit", "beendet"].includes(spiel.status);
                       const score = showScore ? getScore(spiel) : null;
+                      const team1 = formatTeamDisplayName(spiel.team1, teamDisplayNames);
+                      const team2 = formatTeamDisplayName(spiel.team2, teamDisplayNames);
 
                       return (
                         <article
@@ -440,16 +465,26 @@ export default function SpielplanPage() {
                             </Badge>
                           </div>
 
-                          <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_72px] sm:items-center">
+                          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_62px] sm:items-center">
                             <div className="min-w-0">
-                              <div className="truncate text-base font-semibold">{spiel.team1}</div>
+                              <div
+                                className="truncate whitespace-nowrap text-[11px] font-semibold leading-4 sm:text-xs"
+                                title={team1}
+                              >
+                                {team1}
+                              </div>
                               <div className="my-1 text-xs uppercase tracking-normal text-muted-foreground">gegen</div>
-                              <div className="truncate text-base font-semibold">{spiel.team2}</div>
+                              <div
+                                className="truncate whitespace-nowrap text-[11px] font-semibold leading-4 sm:text-xs"
+                                title={team2}
+                              >
+                                {team2}
+                              </div>
                             </div>
 
-                            <div className="rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] px-3 py-2 text-center">
+                            <div className="rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] px-1.5 py-2 text-center">
                               <div className="text-[11px] text-muted-foreground">Ergebnis</div>
-                              <div className="mt-1 font-mono text-xl font-semibold text-[#4f5d2f]">
+                              <div className="mt-1 font-mono text-lg font-semibold text-[#4f5d2f]">
                                 {score || "-"}
                               </div>
                             </div>

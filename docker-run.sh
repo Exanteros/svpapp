@@ -19,6 +19,7 @@ SHOW_ADMIN=false
 
 ADMIN_EMAIL_OVERRIDE="${ADMIN_EMAIL:-}"
 ADMIN_PASSWORD_OVERRIDE="${ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD_HASH_OVERRIDE="${ADMIN_PASSWORD_HASH:-}"
 APP_PORT_OVERRIDE="${APP_PORT:-}"
 BIND_ADDRESS_OVERRIDE="${BIND_ADDRESS:-}"
 APP_URL_OVERRIDE="${NEXT_PUBLIC_APP_URL:-${NEXT_PUBLIC_SITE_URL:-}}"
@@ -51,7 +52,7 @@ Usage: ./docker-run.sh [options]
 
 Options:
   --admin-email EMAIL      Set or update the admin email.
-  --admin-password VALUE   Set or update the admin password.
+  --admin-password VALUE   Set or update the admin password. Stored as bcrypt hash.
   --app-url URL            Public app URL, for example https://svp.example.de.
   --port PORT              Host port to publish. Default: 3000.
   --bind ADDRESS           Host bind address. Default: 0.0.0.0.
@@ -214,6 +215,14 @@ generate_hex() {
   od -An -N "$bytes" -tx1 /dev/urandom | tr -d ' \n'
 }
 
+hash_password() {
+  local password="$1"
+
+  command -v node >/dev/null 2>&1 || die "node is required to create ADMIN_PASSWORD_HASH."
+
+  PASSWORD_TO_HASH="$password" node -e 'const bcrypt = require("bcryptjs"); console.log(bcrypt.hashSync(process.env.PASSWORD_TO_HASH || "", 12));'
+}
+
 validate_plain_env_value() {
   local key="$1"
   local value="$2"
@@ -267,7 +276,7 @@ write_env_file() {
   local bind_address="$2"
   local app_url="$3"
   local admin_email="$4"
-  local admin_password="$5"
+  local admin_password_hash="$5"
   local session_secret="$6"
   local admin_api_key="$7"
   local referee_card_secret="$8"
@@ -304,7 +313,7 @@ write_env_file() {
     echo ""
     echo "# Admin login for /admin/login"
     echo "ADMIN_EMAIL=$admin_email"
-    echo "ADMIN_PASSWORD=$admin_password"
+    echo "ADMIN_PASSWORD_HASH=$admin_password_hash"
     echo "SESSION_SECRET=$session_secret"
     echo ""
     echo "# Legacy/internal secrets used by older helpers and referee-card tokens."
@@ -356,6 +365,7 @@ write_optional_env() {
 ensure_env_file() {
   local existing_admin_email
   local existing_admin_password
+  local existing_admin_password_hash
   local existing_session_secret
   local existing_admin_api_key
   local existing_referee_card_secret
@@ -371,6 +381,7 @@ ensure_env_file() {
   local docker_network
   local admin_email
   local admin_password
+  local admin_password_hash
   local session_secret
   local admin_api_key
   local referee_card_secret
@@ -378,6 +389,7 @@ ensure_env_file() {
 
   existing_admin_email="$(read_env_value ADMIN_EMAIL || true)"
   existing_admin_password="$(read_env_value ADMIN_PASSWORD || true)"
+  existing_admin_password_hash="$(read_env_value ADMIN_PASSWORD_HASH || true)"
   existing_session_secret="$(read_env_value SESSION_SECRET || true)"
   existing_admin_api_key="$(read_env_value ADMIN_API_KEY || true)"
   existing_referee_card_secret="$(read_env_value REFEREE_CARD_SECRET || true)"
@@ -401,16 +413,29 @@ ensure_env_file() {
     admin_email="$(prompt_default "Admin email" "admin@sv-puschendorf.de")"
   fi
 
-  if [ -n "$ADMIN_PASSWORD_OVERRIDE" ]; then
-    admin_password="$ADMIN_PASSWORD_OVERRIDE"
+  if [ -n "$ADMIN_PASSWORD_HASH_OVERRIDE" ]; then
+    admin_password=""
+    admin_password_hash="$ADMIN_PASSWORD_HASH_OVERRIDE"
     ADMIN_PASSWORD_WAS_GENERATED=false
-  elif [ "$RESET_ADMIN" = true ] || [ -z "$existing_admin_password" ]; then
+  elif [ -n "$ADMIN_PASSWORD_OVERRIDE" ]; then
+    admin_password="$ADMIN_PASSWORD_OVERRIDE"
+    admin_password_hash="$(hash_password "$admin_password")"
+    ADMIN_PASSWORD_WAS_GENERATED=false
+  elif [ "$RESET_ADMIN" = true ] || { [ -z "$existing_admin_password_hash" ] && [ -z "$existing_admin_password" ]; }; then
     admin_password="$(generate_hex 18)"
+    admin_password_hash="$(hash_password "$admin_password")"
     ADMIN_PASSWORD_WAS_GENERATED=true
+  elif [ -n "$existing_admin_password_hash" ]; then
+    admin_password=""
+    admin_password_hash="$existing_admin_password_hash"
+    ADMIN_PASSWORD_WAS_GENERATED=false
   else
     admin_password="$existing_admin_password"
+    admin_password_hash="$(hash_password "$admin_password")"
     ADMIN_PASSWORD_WAS_GENERATED=false
   fi
+
+  ADMIN_PASSWORD_FOR_SUMMARY="$admin_password"
 
   if [ -z "$existing_session_secret" ] || [ "$RESET_ADMIN" = true ]; then
     session_secret="$(generate_hex 32)"
@@ -438,7 +463,7 @@ ensure_env_file() {
   validate_plain_env_value "DOCKER_NETWORK" "$docker_network"
   validate_plain_env_value "NEXT_PUBLIC_APP_URL" "$app_url"
   validate_plain_env_value "ADMIN_EMAIL" "$admin_email"
-  validate_plain_env_value "ADMIN_PASSWORD" "$admin_password"
+  validate_plain_env_value "ADMIN_PASSWORD_HASH" "$admin_password_hash"
   validate_plain_env_value "SESSION_SECRET" "$session_secret"
   validate_plain_env_value "ADMIN_API_KEY" "$admin_api_key"
   validate_plain_env_value "REFEREE_CARD_SECRET" "$referee_card_secret"
@@ -448,7 +473,7 @@ ensure_env_file() {
     "$bind_address" \
     "$app_url" \
     "$admin_email" \
-    "$admin_password" \
+    "$admin_password_hash" \
     "$session_secret" \
     "$admin_api_key" \
     "$referee_card_secret" \
@@ -593,14 +618,12 @@ ensure_host_port_available() {
 
 print_admin_summary() {
   local admin_email
-  local admin_password
   local app_url
   local publish_port
   local app_port
   local docker_network
 
   admin_email="$(read_env_value ADMIN_EMAIL || true)"
-  admin_password="$(read_env_value ADMIN_PASSWORD || true)"
   app_url="$(read_env_value NEXT_PUBLIC_APP_URL || true)"
   publish_port="$(read_env_value PUBLISH_PORT || true)"
   app_port="$(read_env_value APP_PORT || true)"
@@ -612,9 +635,13 @@ print_admin_summary() {
   echo "  Email:    $admin_email"
 
   if [ "${ADMIN_PASSWORD_WAS_GENERATED:-false}" = true ] || [ "$SHOW_ADMIN" = true ]; then
-    echo "  Password: $admin_password"
+    if [ -n "${ADMIN_PASSWORD_FOR_SUMMARY:-}" ]; then
+      echo "  Password: $ADMIN_PASSWORD_FOR_SUMMARY"
+    else
+      echo "  Password: stored as bcrypt hash (use --reset-admin to rotate it)"
+    fi
   else
-    echo "  Password: kept from $ENV_FILE (use --show-admin to print it, --reset-admin to rotate it)"
+    echo "  Password: stored as bcrypt hash (use --reset-admin to rotate it)"
   fi
 
   if [ "$publish_port" = false ]; then

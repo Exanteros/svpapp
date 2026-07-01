@@ -142,12 +142,12 @@ export async function POST(request: NextRequest) {
     }
     
     if (body.action === 'save_settings') {
-      const result = saveAdminSettings(body.settings);
+      saveAdminSettings(body.settings);
       notifySpielplanChanged({ reason: 'settings' });
       
       return NextResponse.json({
         message: 'Einstellungen erfolgreich gespeichert',
-        settings: body.settings
+        settings: getAdminSettings()
       });
     }
     

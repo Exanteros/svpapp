@@ -1,61 +1,12 @@
-import { SignJWT, jwtVerify } from 'jose';
+import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
+import { decrypt, encrypt, type SessionPayload } from './session-token';
 
-const DEV_ADMIN_EMAIL = 'admin@svpuschendorf.de';
-const VOLATILE_SESSION_SECRET = createVolatileSessionSecret();
-
-// Session configuration
-const SESSION_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || VOLATILE_SESSION_SECRET
-);
+const DEFAULT_DEV_ADMIN_USERNAME = 'admin';
+const DEFAULT_DEV_ADMIN_PASSWORD = 'password';
 const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-export interface SessionPayload {
-  userId: string;
-  email: string;
-  role: 'admin';
-  expiresAt: number;
-}
-
-/**
- * Encrypt session data into a JWT token
- */
-export async function encrypt(payload: SessionPayload): Promise<string> {
-  const jwtPayload = {
-    userId: payload.userId,
-    email: payload.email,
-    role: payload.role,
-    expiresAt: payload.expiresAt
-  };
-
-  return new SignJWT(jwtPayload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(new Date(payload.expiresAt))
-    .sign(SESSION_SECRET);
-}
-
-/**
- * Decrypt and verify JWT token
- */
-export async function decrypt(token: string): Promise<SessionPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, SESSION_SECRET, {
-      algorithms: ['HS256'],
-    });
-
-    return {
-      userId: payload.userId as string,
-      email: payload.email as string,
-      role: payload.role as 'admin',
-      expiresAt: payload.expiresAt as number
-    };
-  } catch (error) {
-    console.error('Session decrypt error:', error);
-    return null;
-  }
-}
+export { decrypt, encrypt, type SessionPayload };
 
 /**
  * Create a new session for authenticated user
@@ -147,37 +98,35 @@ export async function refreshSession(): Promise<void> {
 }
 
 /**
- * Verify admin credentials (simple username/password check)
+ * Verify admin credentials.
+ *
+ * Development accepts a local username/password pair. Production requires
+ * ADMIN_EMAIL and a bcrypt ADMIN_PASSWORD_HASH.
  */
-export function verifyCredentials(email: string, password: string): boolean {
-  const configuredEmail = process.env.ADMIN_EMAIL;
-  const configuredPassword = process.env.ADMIN_PASSWORD;
+export function verifyCredentials(identifier: string, password: string): boolean {
+  const normalizedIdentifier = identifier.trim().toLowerCase();
 
-  if (!configuredEmail || !configuredPassword) {
-    if (process.env.NODE_ENV === 'development') {
-      const devPassword = process.env.DEV_ADMIN_PASSWORD;
-      return Boolean(devPassword) && email === DEV_ADMIN_EMAIL && password === devPassword;
+  if (process.env.NODE_ENV === 'development') {
+    const devUsername = (process.env.DEV_ADMIN_USERNAME || DEFAULT_DEV_ADMIN_USERNAME).trim().toLowerCase();
+    const devPassword = process.env.DEV_ADMIN_PASSWORD || DEFAULT_DEV_ADMIN_PASSWORD;
+
+    if (normalizedIdentifier === devUsername && password === devPassword) {
+      return true;
     }
+  }
 
+  const configuredEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const configuredPasswordHash = process.env.ADMIN_PASSWORD_HASH;
+
+  if (!configuredEmail || !configuredPasswordHash || normalizedIdentifier !== configuredEmail) {
     return false;
   }
 
-  return email === configuredEmail && password === configuredPassword;
-}
-
-function createVolatileSessionSecret() {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
+  try {
+    return bcrypt.compareSync(password, configuredPasswordHash);
+  } catch {
+    return false;
   }
-
-  const values = new Uint32Array(4);
-
-  if (globalThis.crypto?.getRandomValues) {
-    globalThis.crypto.getRandomValues(values);
-    return Array.from(values, (value) => value.toString(36)).join('');
-  }
-
-  return `volatile-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function shouldUseSecureSessionCookie() {

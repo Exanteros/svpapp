@@ -28,6 +28,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: process.cwd(),
+
   // Memory optimization for low-resource servers
   experimental: {
     // Reduce memory usage during build

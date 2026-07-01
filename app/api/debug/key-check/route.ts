@@ -5,7 +5,7 @@ import { verifyApiAuth } from '@/lib/dal';
 export async function GET(request: NextRequest) {
   // Nur im Entwicklungsmodus verfügbar
   if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Nur im Entwicklungsmodus verfügbar' }, { status: 403 });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   
   // Verify authentication even in development
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Nur im Entwicklungsmodus verfügbar
   if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Nur im Entwicklungsmodus verfügbar' }, { status: 403 });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   
   try {

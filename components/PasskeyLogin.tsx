@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Fingerprint, 
@@ -237,14 +236,14 @@ export default function PasskeyLogin({ onSuccess, onError, className = "" }: Pas
   }
 
   return (
-    <Card className={`w-full ${className}`}>
-      <CardHeader className="pb-4">
-        <CardTitle className="flex items-center gap-2 text-lg">
+    <div className={`w-full rounded-md border p-4 ${className}`}>
+      <div className="pb-4">
+        <h3 className="flex items-center gap-2 text-lg font-semibold">
           <Fingerprint className="h-5 w-5 text-blue-600" />
           Touch ID / Face ID Anmeldung
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+        </h3>
+      </div>
+      <div>
         <div className="space-y-4">
           <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
             <CheckCircle className="h-4 w-4 text-green-600" />
@@ -276,7 +275,7 @@ export default function PasskeyLogin({ onSuccess, onError, className = "" }: Pas
             Nutzen Sie Ihren Fingerabdruck oder Ihr Gesicht für eine sichere Anmeldung
           </p>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

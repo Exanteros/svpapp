@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Settings, Info } from "lucide-react";
+import { ChevronLeft, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { CookieManager, CookieConsent } from "@/lib/cookie-manager";
 
@@ -80,122 +80,122 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
   if (!isVisible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4">
-      <div className="bg-card text-card-foreground max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border shadow-xs">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-3 sm:p-5">
+      <div className="pointer-events-auto w-full max-w-xl overflow-hidden rounded-[8px] border border-zinc-200/80 bg-white/95 text-zinc-950 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl">
         {!showSettings ? (
-          // Haupt-Cookie-Banner
-          <div className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex size-8 items-center justify-center rounded-md bg-muted">
-                  <Info className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">Cookie-Einstellungen</h3>
+          <div className="p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1]">
+                <ShieldCheck className="size-4 text-[#5e6d35]" />
               </div>
-              <button
-                onClick={() => setIsVisible(false)}
-                className="text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-muted-foreground mb-4">
-                Wir verwenden Cookies, um Ihnen die bestmögliche Nutzung unserer Turnier-Website zu ermöglichen. 
-                Einige Cookies sind technisch notwendig, andere helfen uns, die Website zu verbessern.
-              </p>
-              <p className="text-sm text-muted-foreground mb-4">
-                <strong>Keine Sorge:</strong> Wir verwenden keine Tracking- oder Werbe-Cookies. 
-                Ihre Privatsphäre ist uns wichtig.
-              </p>
-              <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="font-medium text-foreground mb-2">Was wir verwenden:</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>✓ <strong>Notwendige Cookies:</strong> Für Anmeldungen und Sicherheit</li>
-                  <li>✓ <strong>Funktionale Cookies:</strong> Für bessere Bedienbarkeit (optional)</li>
-                  <li>✗ <strong>Tracking-Cookies:</strong> Verwenden wir nicht</li>
-                  <li>✗ <strong>Werbe-Cookies:</strong> Verwenden wir nicht</li>
-                </ul>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold leading-5 text-zinc-950">Cookies</h3>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">
+                      Wir nutzen notwendige Cookies für Sicherheit und optional funktionale Cookies für eine bessere Bedienung.
+                      Kein Tracking, keine Werbung.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsVisible(false)}
+                    aria-label="Cookie-Banner schließen"
+                    className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a9868]/35"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-medium text-zinc-600">
+                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1">Notwendig aktiv</span>
+                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1">Funktional optional</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <Button
                 onClick={handleAcceptAll}
-                className="flex-1"
+                size="sm"
+                className="h-9 bg-[#5e6d35] text-white hover:bg-[#4f5d2f]"
               >
                 Alle akzeptieren
               </Button>
               <Button
                 onClick={handleRejectOptional}
                 variant="outline"
-                className="flex-1"
+                size="sm"
+                className="h-9 border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
               >
                 Nur notwendige
               </Button>
               <Button
                 onClick={handleShowSettings}
                 variant="outline"
-                className="flex items-center gap-2"
+                size="sm"
+                className="h-9 border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
               >
-                <Settings className="h-4 w-4" />
+                <SlidersHorizontal className="size-4" />
                 Einstellungen
               </Button>
             </div>
 
-            <div className="mt-4 text-center">
+            <div className="mt-3 text-center sm:text-left">
               <Link 
                 href="/cookie-richtlinie"
-                className="text-sm text-primary underline-offset-4 hover:underline"
+                className="text-xs text-zinc-500 underline-offset-4 transition hover:text-zinc-800 hover:underline"
               >
-                Mehr Informationen in unserer Cookie-Richtlinie
+                Cookie-Richtlinie
               </Link>
             </div>
           </div>
         ) : (
-          // Detaillierte Einstellungen
-          <div className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Cookie-Einstellungen anpassen</h3>
+          <div className="p-4 sm:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(false)}
+                  aria-label="Zurück"
+                  className="rounded-md p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a9868]/35"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <div>
+                  <h3 className="text-sm font-semibold leading-5 text-zinc-950">Cookie-Einstellungen</h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">Nur funktionale Cookies sind optional.</p>
+                </div>
+              </div>
               <button
-                onClick={() => setShowSettings(false)}
-                className="text-muted-foreground transition-colors hover:text-foreground"
+                type="button"
+                onClick={() => setIsVisible(false)}
+                aria-label="Cookie-Banner schließen"
+                className="rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a9868]/35"
               >
-                <X className="h-5 w-5" />
+                <X className="size-4" />
               </button>
             </div>
 
-            <div className="space-y-6">
-              {/* Notwendige Cookies */}
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-foreground">Notwendige Cookies</h4>
-                  <span className="rounded bg-secondary px-2 py-1 text-sm text-secondary-foreground">
-                    Immer aktiv
+            <div className="grid gap-2">
+              <div className="rounded-[8px] border border-zinc-200 bg-zinc-50/70 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-950">Notwendige Cookies</h4>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">Login, Sicherheit und gespeicherte Einwilligung.</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-[#d9dec8] bg-white px-2.5 py-1 text-[11px] font-medium text-[#5e6d35]">
+                    Aktiv
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Diese Cookies sind für das Funktionieren der Website erforderlich und können 
-                  nicht deaktiviert werden. Sie ermöglichen grundlegende Funktionen wie 
-                  Anmeldungen und Sicherheit.
-                </p>
-                <details className="text-sm text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground">
-                    Details anzeigen
-                  </summary>
-                  <ul className="mt-2 space-y-1 ml-4">
-                    <li>• Session-Management für Anmeldungen</li>
-                    <li>• CSRF-Schutz gegen Angriffe</li>
-                    <li>• Cookie-Einstellungen speichern</li>
-                  </ul>
-                </details>
               </div>
 
-              {/* Funktionale Cookies */}
-              <div className="rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-foreground">Funktionale Cookies</h4>
+              <div className="rounded-[8px] border border-zinc-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-medium text-zinc-950">Funktionale Cookies</h4>
+                    <p className="mt-1 text-xs leading-5 text-zinc-600">Merken Bedien- und UI-Einstellungen lokal.</p>
+                  </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -203,46 +203,25 @@ export default function CookieBanner({ onAcceptAll, onRejectOptional, onSettings
                       onChange={(e) => setFunctionalCookies(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/20"></div>
+                    <div className="peer h-6 w-11 rounded-full bg-zinc-200 transition after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-zinc-200 after:bg-white after:shadow-sm after:transition-all after:content-[''] peer-checked:bg-[#5e6d35] peer-checked:after:translate-x-full peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#8a9868]/20"></div>
                   </label>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Diese Cookies verbessern die Benutzerfreundlichkeit, indem sie Ihre 
-                  Einstellungen speichern und die Navigation erleichtern.
-                </p>
-                <details className="text-sm text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground">
-                    Details anzeigen
-                  </summary>
-                  <ul className="mt-2 space-y-1 ml-4">
-                    <li>• Zwischenspeicherung von Formulardaten</li>
-                    <li>• Bevorzugte Sprach-Einstellungen</li>
-                    <li>• Design-Präferenzen (Hell/Dunkel-Modus)</li>
-                  </ul>
-                </details>
-              </div>
-
-              {/* Datenschutz-Hinweis */}
-              <div className="rounded-lg border bg-muted/40 p-4">
-                <h4 className="font-medium text-foreground mb-2">Ihr Datenschutz ist uns wichtig</h4>
-                <p className="text-sm text-muted-foreground">
-                  Wir verwenden keine Tracking-, Analyse- oder Werbe-Cookies. Alle Daten 
-                  bleiben lokal und werden nicht an Dritte weitergegeben.
-                </p>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
               <Button
                 onClick={handleSaveSettings}
-                className="flex-1"
+                size="sm"
+                className="h-9 bg-[#5e6d35] text-white hover:bg-[#4f5d2f]"
               >
                 Einstellungen speichern
               </Button>
               <Button
                 onClick={() => setShowSettings(false)}
                 variant="outline"
-                className="border"
+                size="sm"
+                className="h-9 border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
               >
                 Zurück
               </Button>

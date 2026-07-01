@@ -6,7 +6,10 @@ import {
   DEFAULT_FELD_EINSTELLUNGEN,
   TOURNAMENT_DEFAULTS,
   calculateRegistrationCost,
+  getDefaultSpielplanZeitbloecke,
   normalizeFeldEinstellungen,
+  normalizeSpielplanZeitbloecke,
+  resolveTournamentScheduleSettings,
   type FeldEinstellungen,
 } from './tournament';
 
@@ -35,6 +38,7 @@ export type RegistrationImportTeam = {
   anzahl: number;
   schiri: boolean;
   spielstaerke?: string;
+  schiriName?: string;
 };
 
 export type RegistrationImportEntry = {
@@ -110,8 +114,14 @@ export function getDatabase() {
 
     // Datenbankmigrationen ausführen
     migrateDatabase();
+
+    ensureDailyDatabaseBackup(databasePath);
   }
   return db;
+}
+
+export function getDatabasePath() {
+  return resolveDatabasePath();
 }
 
 function resolveDatabasePath() {
@@ -128,6 +138,122 @@ function resolveDatabasePath() {
   }
 
   return path.join(process.cwd(), 'database.sqlite');
+}
+
+export async function createDatabaseBackup(destinationPath?: string) {
+  const database = getDatabase();
+  const backupPath = destinationPath || createBackupPath('manual');
+
+  fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+  await database.backup(backupPath);
+
+  return backupPath;
+}
+
+export function getBackupDirectory() {
+  const configuredPath = process.env.DATABASE_BACKUP_DIR;
+
+  if (configuredPath) {
+    return path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.join(process.cwd(), configuredPath);
+  }
+
+  return path.join(path.dirname(resolveDatabasePath()), 'backups');
+}
+
+export function restoreDatabaseFromBuffer(buffer: Buffer) {
+  const databasePath = resolveDatabasePath();
+  const restoreDir = path.join(path.dirname(databasePath), 'restore');
+  const restorePath = path.join(restoreDir, `restore-${Date.now()}.sqlite`);
+  const preRestoreBackupPath = createBackupPath('pre-restore');
+
+  fs.mkdirSync(restoreDir, { recursive: true });
+  fs.writeFileSync(restorePath, buffer);
+  validateDatabaseFile(restorePath);
+
+  if (db) {
+    db.close();
+    db = null;
+  }
+
+  fs.mkdirSync(path.dirname(preRestoreBackupPath), { recursive: true });
+  if (fs.existsSync(databasePath)) {
+    fs.copyFileSync(databasePath, preRestoreBackupPath);
+  }
+
+  for (const suffix of ['', '-wal', '-shm']) {
+    const filePath = `${databasePath}${suffix}`;
+    if (fs.existsSync(filePath)) {
+      fs.rmSync(filePath);
+    }
+  }
+
+  fs.copyFileSync(restorePath, databasePath);
+  fs.rmSync(restorePath, { force: true });
+
+  getDatabase();
+
+  return {
+    restored: true,
+    preRestoreBackupPath,
+  };
+}
+
+function createBackupPath(kind: 'auto' | 'manual' | 'pre-restore') {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toISOString().slice(11, 19).replace(/:/g, '-');
+  const suffix = kind === 'auto' ? date : `${date}-${time}`;
+
+  return path.join(getBackupDirectory(), `${kind}-${suffix}.sqlite`);
+}
+
+function ensureDailyDatabaseBackup(databasePath: string) {
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return;
+  }
+
+  if (!fs.existsSync(databasePath)) {
+    return;
+  }
+
+  const backupPath = createBackupPath('auto');
+
+  if (fs.existsSync(backupPath)) {
+    return;
+  }
+
+  void createDatabaseBackup(backupPath).catch((error) => {
+    console.warn('⚠️ Automatisches Datenbank-Backup fehlgeschlagen:', error);
+  });
+}
+
+function validateDatabaseFile(filePath: string) {
+  let restoreDb: Database.Database | null = null;
+
+  try {
+    restoreDb = new Database(filePath, { readonly: true, fileMustExist: true });
+    const integrity = restoreDb.prepare('PRAGMA integrity_check').get() as { integrity_check?: string };
+
+    if (integrity.integrity_check !== 'ok') {
+      throw new Error('SQLite integrity_check fehlgeschlagen');
+    }
+
+    const tables = restoreDb.prepare(`
+      SELECT name FROM sqlite_master
+      WHERE type = 'table' AND name IN ('anmeldungen', 'teams', 'spiele', 'einstellungen')
+    `).all() as Array<{ name: string }>;
+    const tableNames = new Set(tables.map((table) => table.name));
+
+    for (const requiredTable of ['anmeldungen', 'teams', 'spiele', 'einstellungen']) {
+      if (!tableNames.has(requiredTable)) {
+        throw new Error(`Backup enthält die Tabelle "${requiredTable}" nicht`);
+      }
+    }
+  } finally {
+    restoreDb?.close();
+  }
 }
 
 function initializeTables() {
@@ -156,6 +282,7 @@ function initializeTables() {
       kategorie TEXT NOT NULL,
       anzahl INTEGER NOT NULL,
       schiri BOOLEAN NOT NULL,
+      schiri_name TEXT,
       spielstaerke TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (anmeldung_id) REFERENCES anmeldungen (id)
@@ -173,6 +300,7 @@ function initializeTables() {
       team1 TEXT NOT NULL,
       team2 TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'geplant',
+      schiedsrichter TEXT,
       ergebnis TEXT,
       tore_team1 INTEGER DEFAULT 0,
       tore_team2 INTEGER DEFAULT 0,
@@ -340,14 +468,72 @@ function migrateDatabase() {
     console.log('🔄 Checking database migrations...');
     addColumnIfMissing(db, 'anmeldungen', 'updated_at', 'updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
     addColumnIfMissing(db, 'teams', 'created_at', 'created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    addColumnIfMissing(db, 'teams', 'schiri_name', 'schiri_name TEXT');
+    addColumnIfMissing(db, 'spiele', 'schiedsrichter', 'schiedsrichter TEXT');
     addColumnIfMissing(db, 'spiele', 'tore_team1', 'tore_team1 INTEGER DEFAULT 0');
     addColumnIfMissing(db, 'spiele', 'tore_team2', 'tore_team2 INTEGER DEFAULT 0');
+    normalizeStoredTeamSkillLevels(db);
 
     console.log('✅ Database migrations completed');
   } catch (error) {
     console.warn('⚠️ Database migration warning:', error);
     // Don't throw - continue with existing schema
   }
+}
+
+function normalizeStoredTeamSkillLevels(database: Database.Database) {
+  const teams = database.prepare(`
+    SELECT id, spielstaerke FROM teams
+    WHERE spielstaerke IS NOT NULL AND TRIM(spielstaerke) != ''
+  `).all() as Array<{ id: string; spielstaerke: string }>;
+  const updateTeam = database.prepare(`
+    UPDATE teams
+    SET spielstaerke = ?
+    WHERE id = ?
+  `);
+
+  for (const team of teams) {
+    const normalized = normalizeTeamSkillLevel(team.spielstaerke);
+
+    if (normalized && normalized !== team.spielstaerke) {
+      updateTeam.run(normalized, team.id);
+    }
+  }
+}
+
+function normalizeTeamSkillLevel(value: string | undefined | null) {
+  const raw = String(value ?? '').trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+  if (['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) || normalized.includes('anfaeng')) {
+    return 'Anfänger';
+  }
+
+  if (
+    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
+    normalized.includes('leistung') ||
+    normalized.includes('sehrerfahren')
+  ) {
+    return 'Leistung';
+  }
+
+  return 'Standard';
+}
+
+function normalizeOptionalText(value: string | undefined | null) {
+  const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
+
+  return normalized || null;
 }
 
 export interface AnmeldungData {
@@ -360,6 +546,7 @@ export interface AnmeldungData {
     anzahl: number;
     schiri: boolean;
     spielstaerke?: string;
+    schiriName?: string;
   }[];
   kosten: number;
 }
@@ -389,8 +576,8 @@ export function createAnmeldung(anmeldungData: AnmeldungData): string {
 
     // Teams einfügen
     const insertTeam = db.prepare(`
-      INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, schiri_name, spielstaerke)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const team of anmeldungData.teams) {
@@ -401,7 +588,8 @@ export function createAnmeldung(anmeldungData: AnmeldungData): string {
         team.kategorie,
         team.anzahl,
         team.schiri ? 1 : 0,
-        team.spielstaerke || null
+        normalizeOptionalText(team.schiriName),
+        normalizeTeamSkillLevel(team.spielstaerke)
       );
     }
   });
@@ -547,8 +735,8 @@ export function importAnmeldungen(
   `);
   const deleteTeams = db.prepare(`DELETE FROM teams WHERE anmeldung_id = ?`);
   const insertTeam = db.prepare(`
-    INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, schiri_name, spielstaerke)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   function rememberExisting(row: (typeof existingRows)[number]) {
@@ -621,7 +809,15 @@ export function importAnmeldungen(
           }
 
           for (const team of teams) {
-            insertTeam.run(createId('team'), existing.id, team.kategorie, team.anzahl, team.schiri ? 1 : 0, team.spielstaerke || null);
+            insertTeam.run(
+              createId('team'),
+              existing.id,
+              team.kategorie,
+              team.anzahl,
+              team.schiri ? 1 : 0,
+              normalizeOptionalText(team.schiriName),
+              normalizeTeamSkillLevel(team.spielstaerke)
+            );
             result.teamsInserted += 1;
           }
         }
@@ -654,13 +850,6 @@ export function importAnmeldungen(
         warnings.push({ row: entry.sourceRows[0], message: `Für "${entry.verein}" wurden keine Teamdaten gefunden.` });
       }
 
-      if (!entry.kontakt?.trim() || !entry.email?.trim() || !entry.mobil?.trim()) {
-        warnings.push({
-          row: entry.sourceRows[0],
-          message: `Für "${entry.verein}" fehlen Kontakt-, E-Mail- oder Mobil-Daten. Der Eintrag wurde trotzdem angelegt.`,
-        });
-      }
-
       const id = createId('anm');
       const kosten = entry.kosten ?? calculateRegistrationCost(teams);
       const row = {
@@ -676,7 +865,15 @@ export function importAnmeldungen(
       insertAnmeldung.run(row.id, row.verein, row.kontakt, row.email, row.mobil, row.kosten, row.status);
 
       for (const team of teams) {
-        insertTeam.run(createId('team'), row.id, team.kategorie, team.anzahl, team.schiri ? 1 : 0, team.spielstaerke || null);
+        insertTeam.run(
+          createId('team'),
+          row.id,
+          team.kategorie,
+          team.anzahl,
+          team.schiri ? 1 : 0,
+          normalizeOptionalText(team.schiriName),
+          normalizeTeamSkillLevel(team.spielstaerke)
+        );
         result.teamsInserted += 1;
       }
 
@@ -704,8 +901,10 @@ function sanitizeRegistrationImportTeams(teams: RegistrationImportTeam[]) {
       continue;
     }
 
-    const spielstaerke = team.spielstaerke?.trim() || undefined;
-    const key = `${normalizeImportLookup(kategorie)}|${team.schiri ? '1' : '0'}|${normalizeImportLookup(spielstaerke || '')}`;
+    const spielstaerke = normalizeTeamSkillLevel(team.spielstaerke) || undefined;
+    const schiriName = normalizeOptionalText(team.schiriName) || undefined;
+    const hasSchiri = Boolean(team.schiri || schiriName);
+    const key = `${normalizeImportLookup(kategorie)}|${hasSchiri ? '1' : '0'}|${normalizeImportLookup(schiriName || '')}|${normalizeImportLookup(spielstaerke || '')}`;
     const existing = merged.get(key);
 
     if (existing) {
@@ -714,7 +913,8 @@ function sanitizeRegistrationImportTeams(teams: RegistrationImportTeam[]) {
       merged.set(key, {
         kategorie,
         anzahl,
-        schiri: Boolean(team.schiri),
+        schiri: hasSchiri,
+        schiriName,
         spielstaerke,
       });
     }
@@ -778,14 +978,15 @@ export function createSpiel(spielData: {
   kategorie: string;
   team1: string;
   team2: string;
+  schiedsrichter?: string | null;
 }) {
   const db = getDatabase();
 
   const spielId = createId('spiel');
 
   const insert = db.prepare(`
-    INSERT INTO spiele (id, datum, zeit, feld, kategorie, team1, team2, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'geplant')
+    INSERT INTO spiele (id, datum, zeit, feld, kategorie, team1, team2, schiedsrichter, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'geplant')
   `);
 
   insert.run(
@@ -795,7 +996,8 @@ export function createSpiel(spielData: {
     spielData.feld,
     spielData.kategorie,
     spielData.team1,
-    spielData.team2
+    spielData.team2,
+    normalizeOptionalText(spielData.schiedsrichter)
   );
 
   return spielId;
@@ -922,6 +1124,7 @@ export function getAdminSettings() {
   const settings = db.prepare(`
     SELECT key, value FROM einstellungen
   `).all();
+  let rawSpielplanZeitbloecke: unknown;
 
   const result: any = {
     turnierName: TOURNAMENT_DEFAULTS.name,
@@ -946,6 +1149,8 @@ export function getAdminSettings() {
     samstagToreSichtbar: false,
     sonntagToreSichtbar: true,
     ergebnisTabellenAktiv: false,
+    spielzeitenAutomatisch: true,
+    spielplanZeitbloecke: getDefaultSpielplanZeitbloecke(),
     anmeldungAktiv: true,
     spielplanStatus: 'draft' as SpielplanStatus,
     spielplanPublishedAt: null as string | null,
@@ -1018,6 +1223,16 @@ export function getAdminSettings() {
       case 'ergebnis_tabellen_aktiv':
         result.ergebnisTabellenAktiv = setting.value === 'true';
         break;
+      case 'spielzeiten_automatisch':
+        result.spielzeitenAutomatisch = setting.value !== 'false';
+        break;
+      case 'spielplan_zeitbloecke':
+        try {
+          rawSpielplanZeitbloecke = JSON.parse(setting.value);
+        } catch {
+          rawSpielplanZeitbloecke = undefined;
+        }
+        break;
       case 'anmeldung_aktiv':
         result.anmeldungAktiv = setting.value !== 'false';
         break;
@@ -1032,6 +1247,11 @@ export function getAdminSettings() {
         break;
     }
   });
+
+  result.spielplanZeitbloecke = normalizeSpielplanZeitbloecke(
+    rawSpielplanZeitbloecke ?? result.spielplanZeitbloecke,
+    resolveTournamentScheduleSettings(result)
+  );
 
   return result;
 }
@@ -1069,6 +1289,12 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('23', 'sonntag_tore_sichtbar', settings.sonntagToreSichtbar ? 'true' : 'false');
     updateSetting.run('24', 'anmeldung_aktiv', settings.anmeldungAktiv === false ? 'false' : 'true');
     updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
+    updateSetting.run('26', 'spielzeiten_automatisch', settings.spielzeitenAutomatisch === false ? 'false' : 'true');
+    updateSetting.run(
+      '27',
+      'spielplan_zeitbloecke',
+      JSON.stringify(normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, resolveTournamentScheduleSettings(settings)))
+    );
     // Sicher speichern des Passkeys (in produktiver Umgebung sollte dieser gehasht werden)
     if (settings.adminPasskey) {
       updateSetting.run('19', 'admin_passkey', settings.adminPasskey);
@@ -1941,7 +2167,7 @@ export function createAnmeldungenDemoData() {
         mobil: "0170-1234567",
         teams: [
           { kategorie: "E-Jugend", anzahl: 2, schiri: false, spielstaerke: "Anfänger" },
-          { kategorie: "D-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Fortgeschritten" }
+          { kategorie: "D-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Standard" }
         ],
         status: "angemeldet"
       },
@@ -1951,8 +2177,8 @@ export function createAnmeldungenDemoData() {
         email: "a.schmidt@fc-beispielheim.de",
         mobil: "0171-2345678",
         teams: [
-          { kategorie: "E-Jugend", anzahl: 1, schiri: false, spielstaerke: "Fortgeschritten" },
-          { kategorie: "C-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Erfahren" },
+          { kategorie: "E-Jugend", anzahl: 1, schiri: false, spielstaerke: "Standard" },
+          { kategorie: "C-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Standard" },
           { kategorie: "Mini", anzahl: 2, schiri: false, spielstaerke: "Anfänger" }
         ],
         status: "bezahlt"
@@ -1963,8 +2189,8 @@ export function createAnmeldungenDemoData() {
         email: "m.weber@tsv-demostadt.de",
         mobil: "0172-3456789",
         teams: [
-          { kategorie: "B-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Sehr erfahren" },
-          { kategorie: "A-Jugend männlich", anzahl: 1, schiri: false, spielstaerke: "Erfahren" }
+          { kategorie: "B-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Leistung" },
+          { kategorie: "A-Jugend männlich", anzahl: 1, schiri: false, spielstaerke: "Standard" }
         ],
         status: "bezahlt"
       },
@@ -1975,7 +2201,7 @@ export function createAnmeldungenDemoData() {
         mobil: "0173-4567890",
         teams: [
           { kategorie: "E-Jugend", anzahl: 3, schiri: false, spielstaerke: "Anfänger" },
-          { kategorie: "D-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Fortgeschritten" }
+          { kategorie: "D-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Standard" }
         ],
         status: "angemeldet"
       },
@@ -1985,8 +2211,8 @@ export function createAnmeldungenDemoData() {
         email: "r.fischer@fc-probehausen.de",
         mobil: "0174-5678901",
         teams: [
-          { kategorie: "C-Jugend männlich", anzahl: 2, schiri: true, spielstaerke: "Erfahren" },
-          { kategorie: "B-Jugend weiblich", anzahl: 1, schiri: false, spielstaerke: "Sehr erfahren" }
+          { kategorie: "C-Jugend männlich", anzahl: 2, schiri: true, spielstaerke: "Standard" },
+          { kategorie: "B-Jugend weiblich", anzahl: 1, schiri: false, spielstaerke: "Leistung" }
         ],
         status: "bezahlt"
       },
@@ -1997,8 +2223,8 @@ export function createAnmeldungenDemoData() {
         mobil: "0175-6789012",
         teams: [
           { kategorie: "Mini", anzahl: 1, schiri: false, spielstaerke: "Anfänger" },
-          { kategorie: "E-Jugend", anzahl: 1, schiri: false, spielstaerke: "Fortgeschritten" },
-          { kategorie: "A-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Sehr erfahren" }
+          { kategorie: "E-Jugend", anzahl: 1, schiri: false, spielstaerke: "Standard" },
+          { kategorie: "A-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Leistung" }
         ],
         status: "angemeldet"
       },
@@ -2009,7 +2235,7 @@ export function createAnmeldungenDemoData() {
         mobil: "0176-7890123",
         teams: [
           { kategorie: "D-Jugend männlich", anzahl: 2, schiri: false, spielstaerke: "Anfänger" },
-          { kategorie: "C-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Fortgeschritten" }
+          { kategorie: "C-Jugend weiblich", anzahl: 1, schiri: true, spielstaerke: "Standard" }
         ],
         status: "bezahlt"
       },
@@ -2019,8 +2245,8 @@ export function createAnmeldungenDemoData() {
         email: "l.wagner@tsg-ballspiel.de",
         mobil: "0177-8901234",
         teams: [
-          { kategorie: "E-Jugend", anzahl: 2, schiri: false, spielstaerke: "Erfahren" },
-          { kategorie: "B-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Sehr erfahren" }
+          { kategorie: "E-Jugend", anzahl: 2, schiri: false, spielstaerke: "Standard" },
+          { kategorie: "B-Jugend männlich", anzahl: 1, schiri: true, spielstaerke: "Leistung" }
         ],
         status: "angemeldet"
       }
@@ -2032,8 +2258,8 @@ export function createAnmeldungenDemoData() {
     `);
 
     const insertTeamStmt = db.prepare(`
-      INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, spielstaerke)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO teams (id, anmeldung_id, kategorie, anzahl, schiri, schiri_name, spielstaerke)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     const anmeldungIds: string[] = [];
@@ -2069,6 +2295,7 @@ export function createAnmeldungenDemoData() {
           team.kategorie,
           team.anzahl,
           team.schiri ? 1 : 0,
+          null,
           team.spielstaerke
         );
       });
@@ -2080,7 +2307,7 @@ export function createAnmeldungenDemoData() {
     console.log('🏆 Anmeldungen demo data created:', {
       anmeldungen: demoAnmeldungen.length,
       totalTeams: demoAnmeldungen.reduce((sum, anm) => sum + anm.teams.reduce((teamSum, team) => teamSum + team.anzahl, 0), 0),
-      leistungsstufen: ['Anfänger', 'Fortgeschritten', 'Erfahren', 'Sehr erfahren']
+      leistungsstufen: ['Anfänger', 'Standard', 'Leistung']
     });
 
     return {

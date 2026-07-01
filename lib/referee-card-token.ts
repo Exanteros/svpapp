@@ -61,7 +61,7 @@ function sign(value: string) {
 function getSecret() {
   return process.env.REFEREE_CARD_SECRET
     || process.env.SESSION_SECRET
-    || process.env.ADMIN_PASSWORD
+    || process.env.ADMIN_PASSWORD_HASH
     || "dev-referee-card-secret";
 }
 

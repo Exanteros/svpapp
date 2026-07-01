@@ -4,7 +4,12 @@ import { BarChart3, CalendarDays, Clock, ListOrdered, MapPin, Medal, Trophy } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SpielplanLiveRefresh } from "@/components/SpielplanLiveRefresh";
-import { areScoresPublicForDate, formatScheduleCategoryLabel } from "@/lib/tournament";
+import {
+  areScoresPublicForDate,
+  createTeamDisplayNameMap,
+  formatScheduleCategoryLabel,
+  formatTeamDisplayName,
+} from "@/lib/tournament";
 
 export const dynamic = "force-dynamic";
 
@@ -80,26 +85,30 @@ function parseScore(spiel: RawSpiel) {
 }
 
 function normalizeResults(spiele: RawSpiel[], settings: Record<string, unknown>) {
-  return spiele.reduce<ErgebnisSpiel[]>((result, spiel) => {
-    if (spiel.status !== "beendet" || !areScoresPublicForDate(settings, spiel.datum)) {
-      return result;
-    }
+  const visibleResults = spiele.reduce<Array<RawSpiel & { score1: number; score2: number }>>((result, spiel) => {
+    if (spiel.status === "beendet" && areScoresPublicForDate(settings, spiel.datum)) {
+      const score = parseScore(spiel);
 
-    const score = parseScore(spiel);
-    if (!score) {
-      return result;
+      if (score) {
+        result.push({
+          ...spiel,
+          score1: score[0],
+          score2: score[1],
+        });
+      }
     }
-
-    result.push({
-      ...spiel,
-      displayKategorie: formatScheduleCategoryLabel(spiel.kategorie),
-      score1: score[0],
-      score2: score[1],
-      ergebnis: `${score[0]}:${score[1]}`,
-    });
 
     return result;
   }, []);
+  const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
+
+  return visibleResults.map<ErgebnisSpiel>((spiel) => ({
+    ...spiel,
+    displayKategorie: formatScheduleCategoryLabel(spiel.kategorie),
+    team1: formatTeamDisplayName(spiel.team1, teamDisplayNames),
+    team2: formatTeamDisplayName(spiel.team2, teamDisplayNames),
+    ergebnis: `${spiel.score1}:${spiel.score2}`,
+  }));
 }
 
 function getStandingTeam(teams: Map<string, TeamStanding>, teamName: string) {

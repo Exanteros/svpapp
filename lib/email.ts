@@ -25,6 +25,13 @@ export interface EmailData {
   anmeldungId: string;
 }
 
+export interface AdminInviteEmailData {
+  email: string;
+  name: string;
+  inviteUrl: string;
+  inviteExpiresAt: string;
+}
+
 export async function sendConfirmationEmail(data: EmailData) {
   const teamsList = data.teams.map(team => 
     `• ${team.kategorie}: ${team.anzahl} Team${team.anzahl > 1 ? 's' : ''} ${team.schiri ? '(mit Schiri)' : '(ohne Schiri, +20€)'} ${team.spielstaerke ? `- ${team.spielstaerke}` : ''}`
@@ -180,4 +187,83 @@ Gesamtkosten: ${data.kosten}€
     console.error('❌ Admin-Benachrichtigung fehlgeschlagen:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unbekannter Fehler' };
   }
+}
+
+export async function sendAdminInviteEmail(data: AdminInviteEmailData) {
+  const expiresAt = formatInviteDate(data.inviteExpiresAt);
+  const recipientName = data.name || data.email;
+  const textContent = `
+Hallo ${recipientName},
+
+du wurdest als Admin für die SV Puschendorf Turnier-Verwaltung eingeladen.
+
+Bitte öffne diesen Link im Browser und richte deinen Passkey ein:
+${data.inviteUrl}
+
+Der Link ist gültig bis ${expiresAt}.
+
+Nach der Einrichtung kannst du dich über /admin/login per Passkey anmelden.
+
+Viele Grüße
+SV Puschendorf
+`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; color: #1f2933;">
+      <h1 style="font-size: 22px; margin: 0 0 16px;">Admin-Zugang einrichten</h1>
+      <p>Hallo ${escapeHtml(recipientName)},</p>
+      <p>du wurdest als Admin für die SV Puschendorf Turnier-Verwaltung eingeladen.</p>
+      <p style="margin: 24px 0;">
+        <a href="${escapeHtml(data.inviteUrl)}" style="display: inline-block; background: #5e6d35; color: #ffffff; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+          Passkey einrichten
+        </a>
+      </p>
+      <p style="font-size: 14px; color: #52616b;">Falls der Button nicht funktioniert, kopiere diesen Link in deinen Browser:</p>
+      <p style="word-break: break-all; font-size: 14px; color: #52616b;">${escapeHtml(data.inviteUrl)}</p>
+      <p style="font-size: 14px; color: #52616b;">Gültig bis ${escapeHtml(expiresAt)}.</p>
+      <p>Viele Grüße<br />SV Puschendorf</p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"SV Puschendorf Verwaltung" <noreply@sv-puschendorf.de>',
+      to: data.email,
+      subject: 'Admin-Zugang für SV Puschendorf einrichten',
+      text: textContent,
+      html: htmlContent,
+    });
+
+    console.log('✅ Admin-Einladung gesendet:', info.messageId);
+    return {
+      success: true,
+      messageId: info.messageId,
+      previewUrl: nodemailer.getTestMessageUrl(info),
+    };
+  } catch (error) {
+    console.error('❌ Admin-Einladung fehlgeschlagen:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unbekannter Fehler',
+    };
+  }
+}
+
+function formatInviteDate(value: string) {
+  try {
+    return new Date(value).toLocaleString('de-DE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+  } catch {
+    return value;
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

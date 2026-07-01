@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { DangerZone } from "./danger-zone";
 import { formatDate } from "./format";
 import { ScheduleDragBoard } from "./schedule-drag-board";
-import type { FeldEinstellungen, FeldTagesEinstellungen, Spiel, TurnierEinstellungen } from "./types";
+import type { FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanZeitblock, TurnierEinstellungen } from "./types";
 import { TEAM_CATEGORIES } from "./types";
 
 interface SchedulePanelProps {
@@ -24,7 +24,8 @@ interface SchedulePanelProps {
   spiele: Spiel[];
   saving: boolean;
   onFeldSettingsSave: (settings: FeldEinstellungen[]) => boolean | Promise<boolean>;
-  onGenerate: () => void;
+  onSettingsPatch: (patch: Partial<TurnierEinstellungen>) => void | Promise<void>;
+  onGenerate: (settingsPatch?: Partial<TurnierEinstellungen>) => void;
   onPublish: () => void;
   onUnpublish: () => void;
   onDeleteAll: () => void;
@@ -37,6 +38,7 @@ export function SchedulePanel({
   spiele,
   saving,
   onFeldSettingsSave,
+  onSettingsPatch,
   onGenerate,
   onPublish,
   onUnpublish,
@@ -44,9 +46,19 @@ export function SchedulePanel({
   onSpielMove,
 }: SchedulePanelProps) {
   const [draftFields, setDraftFields] = useState(feldEinstellungen);
+  const [draftZeitbloecke, setDraftZeitbloecke] = useState<SpielplanZeitblock[]>(() =>
+    materializeZeitbloecke(settings.spielplanZeitbloecke, settings)
+  );
   const [savedSignature, setSavedSignature] = useState(() => JSON.stringify(feldEinstellungen));
   const draftSignature = useMemo(() => JSON.stringify(draftFields), [draftFields]);
   const hasUnsavedFields = draftSignature !== savedSignature;
+  const savedZeitbloeckeSignature = useMemo(
+    () => JSON.stringify(materializeZeitbloecke(settings.spielplanZeitbloecke, settings)),
+    [settings]
+  );
+  const draftZeitbloeckeSignature = useMemo(() => JSON.stringify(draftZeitbloecke), [draftZeitbloecke]);
+  const hasUnsavedZeitbloecke = draftZeitbloeckeSignature !== savedZeitbloeckeSignature;
+  const autoSpielzeiten = settings.spielzeitenAutomatisch !== false;
   const previewHref = settings.spielplanStatus === "published" ? "/spielplan" : "/spielplan?preview=1";
   const days = useMemo(
     () => [
@@ -69,6 +81,18 @@ export function SchedulePanel({
     setDraftFields(nextFields);
     setSavedSignature(JSON.stringify(feldEinstellungen));
   }, [feldEinstellungen, daySignature, days]);
+
+  useEffect(() => {
+    setDraftZeitbloecke(materializeZeitbloecke(settings.spielplanZeitbloecke, settings));
+  }, [
+    settings.spielplanZeitbloecke,
+    settings.turnierStartDatum,
+    settings.turnierEndDatum,
+    settings.samstagStartzeit,
+    settings.samstagEndzeit,
+    settings.sonntagStartzeit,
+    settings.sonntagEndzeit,
+  ]);
 
   function updateField(id: string, patch: Partial<FeldEinstellungen>) {
     setDraftFields((fields) =>
@@ -191,6 +215,52 @@ export function SchedulePanel({
     );
   }
 
+  function updateZeitblock(id: string, patch: Partial<SpielplanZeitblock>) {
+    setDraftZeitbloecke((blocks) =>
+      blocks.map((block) => (block.id === id ? { ...block, ...patch } : block))
+    );
+  }
+
+  function addZeitblock() {
+    setDraftZeitbloecke((blocks) => [
+      ...blocks,
+      {
+        id: createZeitblockId(blocks),
+        label: `Zeitblock ${blocks.length + 1}`,
+        datum: settings.turnierEndDatum,
+        startzeit: settings.sonntagStartzeit,
+        endzeit: settings.sonntagEndzeit,
+        kategorien: [],
+      },
+    ]);
+  }
+
+  function deleteZeitblock(id: string) {
+    setDraftZeitbloecke((blocks) => blocks.filter((block) => block.id !== id));
+  }
+
+  function addZeitblockCategory(id: string, category: string) {
+    setDraftZeitbloecke((blocks) =>
+      blocks.map((block) => {
+        if (block.id !== id || block.kategorien.includes(category)) return block;
+
+        return {
+          ...block,
+          kategorien: [...block.kategorien, category],
+        };
+      })
+    );
+  }
+
+  function removeZeitblockCategory(id: string, category: string) {
+    setDraftZeitbloecke((blocks) =>
+      blocks.map((block) => block.id === id
+        ? { ...block, kategorien: block.kategorien.filter((item) => item !== category) }
+        : block
+      )
+    );
+  }
+
   async function saveFieldDraft() {
     const nextFields = materializeFieldsForDays(draftFields, days);
     const saved = await onFeldSettingsSave(nextFields);
@@ -200,6 +270,17 @@ export function SchedulePanel({
       setDraftFields(nextFields);
       setSavedSignature(nextSignature);
     }
+  }
+
+  async function saveZeitbloecke() {
+    const nextBlocks = materializeZeitbloecke(draftZeitbloecke, settings);
+    await onSettingsPatch({ spielplanZeitbloecke: nextBlocks });
+  }
+
+  async function saveZeitbloeckeAndGenerate() {
+    const nextBlocks = materializeZeitbloecke(draftZeitbloecke, settings);
+    await onSettingsPatch({ spielplanZeitbloecke: nextBlocks });
+    onGenerate({ spielplanZeitbloecke: nextBlocks });
   }
 
   return (
@@ -226,7 +307,7 @@ export function SchedulePanel({
         <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <CardTitle className="text-lg">1. Felder und Tage einrichten</CardTitle>
-            <p className="!mt-1 text-sm text-muted-foreground">Jedes Feld bekommt pro Turniertag eigene Spielminuten, Pausen und Halbzeitwerte.</p>
+            <p className="!mt-1 text-sm text-muted-foreground">Beim Generieren werden Zeitblöcke, aktive Felder und Anmeldungen zu einem kompakten Plan verrechnet.</p>
           </div>
           <div className="grid gap-2 sm:flex sm:items-center">
             <Badge variant="outline" className="w-fit border-[#d9dec8] text-[#5e6d35]">
@@ -239,11 +320,178 @@ export function SchedulePanel({
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-col gap-3 rounded-[8px] border border-[#d9dec8] bg-white p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 pr-0 sm:pr-4">
+              <Label htmlFor="autoSpielzeiten" className="text-sm font-medium">Spielzeiten automatisch berechnen</Label>
+              <p className="!mt-1 text-sm text-muted-foreground">
+                Der Generator nutzt die Zeitblöcke und verteilt die Spiele passend auf die verfügbaren Felder.
+              </p>
+            </div>
+            <Switch
+              id="autoSpielzeiten"
+              checked={autoSpielzeiten}
+              disabled={saving}
+              onCheckedChange={(checked) => {
+                void onSettingsPatch({ spielzeitenAutomatisch: Boolean(checked) });
+              }}
+            />
+          </div>
+          <div className="mb-4 overflow-hidden rounded-[8px] border border-[#d9dec8] bg-white">
+            <div className="border-b border-[#e1e4d8] bg-[#f6f7f1] p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold">Zeitblöcke für den Generator</h3>
+                    <Badge variant="outline" className="border-[#d9dec8] bg-white text-[#4f5d2f]">
+                      {draftZeitbloecke.length} Block{draftZeitbloecke.length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <p className="!mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    Kategorien werden nur innerhalb ihres Blocks geplant. Start, Ende und Kategorieauswahl kannst du pro Turnier wiederverwenden.
+                </p>
+              </div>
+                <div className="grid gap-2 sm:grid-cols-3 xl:flex xl:shrink-0">
+                <Button type="button" variant="outline" size="sm" onClick={addZeitblock} className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  Block hinzufügen
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!hasUnsavedZeitbloecke || saving}
+                  onClick={saveZeitbloecke}
+                  className="w-full sm:w-auto"
+                >
+                  Blöcke speichern
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={saving}
+                  onClick={saveZeitbloeckeAndGenerate}
+                  className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
+                >
+                  <Wand2 className="size-4" />
+                  Speichern & generieren
+                </Button>
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+              {draftZeitbloecke.map((block) => {
+                const selected = block.kategorien || [];
+
+                return (
+                  <div key={block.id} className="min-w-0 overflow-hidden rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8]">
+                    <div className="border-b border-[#e1e4d8] bg-white p-3">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <Label className="text-xs text-muted-foreground">Name</Label>
+                          <Input
+                            value={block.label}
+                            onChange={(event) => updateZeitblock(block.id, { label: event.target.value })}
+                            className="mt-1 h-9 bg-white font-medium"
+                            aria-label="Zeitblock Name"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={draftZeitbloecke.length <= 1}
+                          onClick={() => deleteZeitblock(block.id)}
+                          aria-label={`${block.label || "Zeitblock"} entfernen`}
+                          className="mt-5 shrink-0 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 p-3">
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Tag</Label>
+                        <Select value={block.datum} onValueChange={(value) => updateZeitblock(block.id, { datum: value })}>
+                          <SelectTrigger className="h-9 bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {days.map((day) => (
+                              <SelectItem key={day.date} value={day.date}>
+                                {day.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Start</Label>
+                        <Input
+                          type="time"
+                          value={block.startzeit}
+                          onChange={(event) => updateZeitblock(block.id, { startzeit: event.target.value })}
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Ende</Label>
+                        <Input
+                          type="time"
+                          value={block.endzeit}
+                          onChange={(event) => updateZeitblock(block.id, { endzeit: event.target.value })}
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <div className="min-w-0">
+                        <Label className="text-xs text-muted-foreground">Kategorien</Label>
+                      <Select onValueChange={(value) => addZeitblockCategory(block.id, value)}>
+                          <SelectTrigger className="mt-1 h-9 bg-white">
+                          <SelectValue placeholder="Kategorie hinzufügen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TEAM_CATEGORIES.filter((category) => !selected.includes(category)).map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      </div>
+                      <Badge variant="outline" className="h-9 justify-center border-[#d9dec8] bg-white px-3 text-[#4f5d2f]">
+                        {selected.length} gewählt
+                      </Badge>
+                    </div>
+                    <div className="flex min-w-0 flex-wrap gap-1.5 rounded-[8px] border border-dashed border-[#d9dec8] bg-white p-2">
+                      {selected.length === 0 ? (
+                        <span className="text-xs text-destructive">Keine Kategorie ausgewählt</span>
+                      ) : selected.map((category) => (
+                        <Badge key={category} variant="outline" className="max-w-full whitespace-normal break-words border-[#d9dec8] bg-[#f6f7f1] pr-1.5">
+                          {category}
+                          <button
+                            type="button"
+                            className="ml-1 rounded-full hover:text-destructive"
+                            onClick={() => removeZeitblockCategory(block.id, category)}
+                            aria-label={`${category} aus Zeitblock entfernen`}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="mb-4 flex flex-col gap-2 rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1] p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm">
               <span className="font-medium">{hasUnsavedFields ? "Ungespeicherte Feldeinstellungen" : "Feldeinstellungen gespeichert"}</span>
               <span className="ml-2 text-muted-foreground">
-                {hasUnsavedFields ? "Speichern, bevor ein neuer Plan generiert wird." : "Bereit für die Spielplan-Erstellung."}
+                {hasUnsavedFields ? "Speichern, bevor ein neuer Plan generiert wird." : "Die Spielzeiten werden beim Generieren nach Kategorie gesetzt."}
               </span>
             </div>
             <Button
@@ -300,49 +548,55 @@ export function SchedulePanel({
                           </label>
                           <span className="text-xs text-muted-foreground">{day.time} Uhr</span>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Spielminuten</Label>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={daySettings.spielzeit}
-                              onChange={(event) => updateFieldDaySettings(field.id, day.date, { spielzeit: Number(event.target.value) })}
-                              className="h-8 bg-white"
-                              disabled={!active}
-                            />
+                        {autoSpielzeiten ? (
+                          <div className="rounded-md border border-dashed border-[#d9dec8] bg-white/70 px-3 py-2 text-xs text-muted-foreground">
+                            Auto aktiv: Der Generator nutzt die gespeicherten Zeitblöcke und füllt die verfügbaren Feldzeiten kompakt.
                           </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Pause</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={daySettings.pausenzeit}
-                              onChange={(event) => updateFieldDaySettings(field.id, day.date, { pausenzeit: Number(event.target.value) })}
-                              className="h-8 bg-white"
-                              disabled={!active}
-                            />
+                        ) : (
+                          <div className="grid gap-2 sm:grid-cols-4">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Spielminuten</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={daySettings.spielzeit}
+                                onChange={(event) => updateFieldDaySettings(field.id, day.date, { spielzeit: Number(event.target.value) })}
+                                className="h-8 bg-white"
+                                disabled={!active}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Pause</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={daySettings.pausenzeit}
+                                onChange={(event) => updateFieldDaySettings(field.id, day.date, { pausenzeit: Number(event.target.value) })}
+                                className="h-8 bg-white"
+                                disabled={!active}
+                              />
+                            </div>
+                            <label className="flex items-end gap-2 pb-2 text-xs text-muted-foreground">
+                              <Checkbox
+                                checked={daySettings.zweiHalbzeiten}
+                                disabled={!active}
+                                onCheckedChange={(checked) => updateFieldDaySettings(field.id, day.date, { zweiHalbzeiten: Boolean(checked) })}
+                              />
+                              Halbzeiten
+                            </label>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">HZ-Pause</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={daySettings.halbzeitpause}
+                                onChange={(event) => updateFieldDaySettings(field.id, day.date, { halbzeitpause: Number(event.target.value) })}
+                                className="h-8 bg-white"
+                                disabled={!active || !daySettings.zweiHalbzeiten}
+                              />
+                            </div>
                           </div>
-                          <label className="flex items-end gap-2 pb-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              checked={daySettings.zweiHalbzeiten}
-                              disabled={!active}
-                              onCheckedChange={(checked) => updateFieldDaySettings(field.id, day.date, { zweiHalbzeiten: Boolean(checked) })}
-                            />
-                            Halbzeiten
-                          </label>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">HZ-Pause</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={daySettings.halbzeitpause}
-                              onChange={(event) => updateFieldDaySettings(field.id, day.date, { halbzeitpause: Number(event.target.value) })}
-                              className="h-8 bg-white"
-                              disabled={!active || !daySettings.zweiHalbzeiten}
-                            />
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -381,8 +635,9 @@ export function SchedulePanel({
                         <div className="min-w-0">
                           <span className="min-w-0 break-words text-sm font-medium">{field.name}</span>
                           <p className="!mt-1 text-xs text-muted-foreground">
-                            {daySettings.spielzeit} Min Spiel · {daySettings.pausenzeit} Min Pause
-                            {daySettings.zweiHalbzeiten ? ` · HZ ${daySettings.halbzeitpause} Min` : ""}
+                            {autoSpielzeiten
+                              ? "Auto · Zeitblock-gesteuert"
+                              : `${daySettings.spielzeit} Min Spiel · ${daySettings.pausenzeit} Min Pause${daySettings.zweiHalbzeiten ? ` · HZ ${daySettings.halbzeitpause} Min` : ""}`}
                           </p>
                         </div>
                         <Select onValueChange={(value) => addCategory(field.id, day.date, value)}>
@@ -435,11 +690,11 @@ export function SchedulePanel({
         <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <CardTitle className="text-lg">3. Generieren und prüfen</CardTitle>
-            <p className="!mt-1 text-sm text-muted-foreground">Nach dem Generieren bleibt der Plan ein Entwurf, bis er veröffentlicht wird.</p>
+            <p className="!mt-1 text-sm text-muted-foreground">Der Algorithmus füllt die Turniertage mit den Excel-Spielzeiten und lässt Überhang-Spiele aus.</p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap">
             <Button
-              onClick={onGenerate}
+              onClick={() => onGenerate()}
               disabled={saving || hasUnsavedFields}
               className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
               title={hasUnsavedFields ? "Bitte zuerst die Feldeinstellungen speichern" : undefined}
@@ -575,4 +830,77 @@ function materializeFieldsForDays(
       einstellungenProTag,
     };
   });
+}
+
+function materializeZeitbloecke(
+  blocks: SpielplanZeitblock[] | undefined,
+  settings: TurnierEinstellungen
+): SpielplanZeitblock[] {
+  const source = Array.isArray(blocks) && blocks.length > 0
+    ? blocks
+    : DEFAULT_ZEITBLOECKE(settings);
+
+  return source
+    .map((block, index) => ({
+      id: block.id || `zeitblock-${index + 1}`,
+      label: block.label || `Zeitblock ${index + 1}`,
+      datum: block.datum || settings.turnierStartDatum,
+      startzeit: normalizeTimeInput(block.startzeit, settings.samstagStartzeit),
+      endzeit: normalizeTimeInput(block.endzeit, settings.samstagEndzeit),
+      kategorien: Array.isArray(block.kategorien) ? block.kategorien.filter(Boolean) : [],
+    }))
+    .filter((block) => block.kategorien.length > 0 || source.length === 1);
+}
+
+function DEFAULT_ZEITBLOECKE(settings: TurnierEinstellungen): SpielplanZeitblock[] {
+  return [
+    {
+      id: "samstag-mini-e",
+      label: "Mini und E-Jugend",
+      datum: settings.turnierStartDatum,
+      startzeit: settings.samstagStartzeit,
+      endzeit: settings.samstagEndzeit,
+      kategorien: ["Mini", "Mini 1", "Mini 2", "Mini 3", "E-Jugend"],
+    },
+    {
+      id: "sonntag-d",
+      label: "D-Jugend",
+      datum: settings.turnierEndDatum,
+      startzeit: "10:00",
+      endzeit: "13:00",
+      kategorien: ["D-Jugend weiblich", "D-Jugend männlich"],
+    },
+    {
+      id: "sonntag-cba",
+      label: "C-, B- und A-Jugend",
+      datum: settings.turnierEndDatum,
+      startzeit: "13:15",
+      endzeit: settings.sonntagEndzeit,
+      kategorien: [
+        "C-Jugend weiblich",
+        "C-Jugend männlich",
+        "B-Jugend weiblich",
+        "B-Jugend männlich",
+        "A-Jugend weiblich",
+        "A-Jugend männlich",
+      ],
+    },
+  ];
+}
+
+function createZeitblockId(blocks: SpielplanZeitblock[]) {
+  const existingIds = new Set(blocks.map((block) => block.id));
+  let index = blocks.length + 1;
+  let id = `zeitblock-${index}`;
+
+  while (existingIds.has(id)) {
+    index += 1;
+    id = `zeitblock-${index}`;
+  }
+
+  return id;
+}
+
+function normalizeTimeInput(value: string | undefined, fallback: string) {
+  return /^\d{1,2}:\d{2}$/.test(value || "") ? value as string : fallback;
 }

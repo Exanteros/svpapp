@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, CalendarDays, Download, ListChecks, Settings, Users, UserRoundCheck } from "lucide-react";
+import { Activity, CalendarDays, Download, ListChecks, Settings, ShieldCheck, Users, UserRoundCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Toaster } from "@/components/ui/sonner";
-import { exportAnmeldungenCSV, exportStatistikenCSV } from "@/lib/export-utils";
+import { exportAnmeldungenCSV, exportSpielplanXLSX, exportStatistikenCSV } from "@/lib/export-utils";
 import { exportSimpleSpielplanPDF, previewSpielplanPDF } from "@/lib/pdf-export-simple";
 
 import {
@@ -27,6 +27,7 @@ import {
   deleteHelferAnmeldung,
   deleteHelferBedarf,
   deleteRegistration,
+  downloadDatabaseBackup,
   flushHelferDatabase,
   flushRegistrationDatabase,
   generateHelferLink,
@@ -37,6 +38,7 @@ import {
   getSpielplan,
   logout,
   publishSpielplan,
+  restoreDatabaseBackup,
   saveFeldEinstellungen,
   saveHelferBedarf,
   saveSettings,
@@ -49,6 +51,7 @@ import {
   unpublishSpielplan,
 } from "./_components/admin-api";
 import { AdminShell } from "./_components/admin-shell";
+import { AdminAccessPanel } from "./_components/admin-access-panel";
 import { DayToolsPanel } from "./_components/day-tools-panel";
 import { ExportsPanel } from "./_components/exports-panel";
 import { HelpersPanel } from "./_components/helpers-panel";
@@ -83,6 +86,7 @@ const navItems: AdminNavItem[] = [
   { id: "day", label: "Turniertag", description: "Live Games und Ergebnisse", icon: Activity },
   { id: "helpers", label: "Helfer", description: "Bedarf und Rückmeldungen", icon: UserRoundCheck },
   { id: "settings", label: "Einstellungen", description: "Turnierdaten und Preise", icon: Settings },
+  { id: "admins", label: "Admins", description: "Zugänge und Passkeys", icon: ShieldCheck },
   { id: "exports", label: "Export", description: "PDF, CSV und Nachbereitung", icon: Download },
 ];
 
@@ -91,6 +95,7 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSectionId>("overview");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
   const [anmeldungen, setAnmeldungen] = useState<Anmeldung[]>([]);
   const [statistiken, setStatistiken] = useState(DEFAULT_STATS);
   const [settings, setSettings] = useState<TurnierEinstellungen>(DEFAULT_SETTINGS);
@@ -306,11 +311,40 @@ export default function AdminPage() {
     });
   }
 
-  async function handleGenerateSchedule() {
+  async function handleScheduleSettingsPatch(patch: Partial<TurnierEinstellungen>) {
+    const previousSettings = settings;
+    const nextSettings = { ...settings, ...patch };
+    setSettings(nextSettings);
+
+    const saved = await withMutation("Einstellungen gespeichert", async () => {
+      const response = await saveSettings(nextSettings);
+      setSettings(response.settings || nextSettings);
+    });
+
+    if (!saved) {
+      setSettings(previousSettings);
+    }
+  }
+
+  async function handleGenerateSchedule(settingsPatch: Partial<TurnierEinstellungen> = {}) {
     await withMutation("Spielplan generiert", async () => {
-      const generated = await generateSpielplan(settings, feldEinstellungen);
-      setSpiele(generated);
-      setSettings((current) => ({ ...current, spielplanStatus: "draft", spielplanPublishedAt: null }));
+      const generationSettings = { ...settings, ...settingsPatch };
+      const generated = await generateSpielplan(generationSettings, feldEinstellungen);
+      setSpiele(generated.spiele);
+      if (generated.feldEinstellungen) {
+        setFeldEinstellungen(generated.feldEinstellungen);
+      }
+      setSettings((current) => ({ ...current, ...settingsPatch, spielplanStatus: "draft", spielplanPublishedAt: null }));
+      if (generated.spielzeitOptimierung.length > 0) {
+        toast.success(
+          generated.spielzeitOptimierung
+            .map((item) => {
+              const timing = item.regelText || `${item.spielzeit} Min Spiel, ${item.pausenzeit} Min Pause`;
+              return `${item.datum}: ${timing}, ${item.spiele} Spiele auf ${item.aktiveFelder} Feldern, ${item.ausgelasseneSpiele} Überhang`;
+            })
+            .join(" · ")
+        );
+      }
       await loadAll();
     });
   }
@@ -364,6 +398,40 @@ export default function AdminPage() {
       const response = await saveSettings(settings);
       setSettings({ ...DEFAULT_SETTINGS, ...(response.settings || settings) });
       await loadAll();
+    });
+  }
+
+  async function handleDownloadBackup() {
+    try {
+      setBackupBusy(true);
+      await downloadDatabaseBackup();
+      toast.success("Backup heruntergeladen");
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Backup konnte nicht heruntergeladen werden");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function handleRestoreBackup(file: File) {
+    requestConfirm({
+      title: "Backup wiederherstellen",
+      description: `Die aktuelle Datenbank wird durch "${file.name}" ersetzt. Vorher wird automatisch ein Sicherheitsbackup erstellt.`,
+      confirmLabel: "Backup wiederherstellen",
+      onConfirm: async () => {
+        try {
+          setBackupBusy(true);
+          await restoreDatabaseBackup(file);
+          toast.success("Backup wiederhergestellt");
+          await loadAll();
+        } catch (error) {
+          console.error(error);
+          toast.error(error instanceof Error ? error.message : "Backup konnte nicht wiederhergestellt werden");
+        } finally {
+          setBackupBusy(false);
+        }
+      },
     });
   }
 
@@ -445,6 +513,21 @@ export default function AdminPage() {
     previewSpielplanPDF(toExportableSpiele(spiele), toPdfSettings(settings));
   }
 
+  async function exportScheduleExcel() {
+    if (spiele.length === 0) {
+      toast.error("Kein Spielplan vorhanden");
+      return;
+    }
+
+    try {
+      await exportSpielplanXLSX(toExportableSpiele(spiele), settings);
+      toast.success("Spielplan als Excel exportiert");
+    } catch (error) {
+      console.error("Excel-Export fehlgeschlagen:", error);
+      toast.error("Excel-Export konnte nicht erstellt werden");
+    }
+  }
+
   const section = (() => {
     switch (activeSection) {
       case "overview":
@@ -491,6 +574,7 @@ export default function AdminPage() {
             spiele={spiele}
             saving={saving}
             onFeldSettingsSave={handleFieldSettingsChange}
+            onSettingsPatch={handleScheduleSettingsPatch}
             onGenerate={handleGenerateSchedule}
             onPublish={handlePublishSchedule}
             onUnpublish={handleUnpublishSchedule}
@@ -532,7 +616,19 @@ export default function AdminPage() {
           />
         );
       case "settings":
-        return <SettingsPanel settings={settings} saving={saving} onChange={setSettings} onSave={handleSaveSettings} />;
+        return (
+          <SettingsPanel
+            settings={settings}
+            saving={saving}
+            backupBusy={backupBusy}
+            onChange={setSettings}
+            onSave={handleSaveSettings}
+            onDownloadBackup={handleDownloadBackup}
+            onRestoreBackup={handleRestoreBackup}
+          />
+        );
+      case "admins":
+        return <AdminAccessPanel />;
       case "exports":
         return (
           <ExportsPanel
@@ -541,6 +637,7 @@ export default function AdminPage() {
             onExportRegistrations={() => exportAnmeldungenCSV(toExportableAnmeldungen(anmeldungen))}
             onExportStats={() => exportStatistikenCSV(statistiken, toExportableAnmeldungen(anmeldungen))}
             onExportSchedule={exportSchedulePdf}
+            onExportScheduleExcel={exportScheduleExcel}
             onPreviewSchedule={previewSchedulePdf}
           />
         );
@@ -622,6 +719,7 @@ function toExportableAnmeldungen(anmeldungen: Anmeldung[]) {
     teams: anmeldung.teams.map((team) => ({
       ...team,
       schiri: Boolean(team.schiri),
+      schiriName: team.schiriName || team.schiri_name || undefined,
       spielstaerke: team.spielstaerke || undefined,
     })),
   }));

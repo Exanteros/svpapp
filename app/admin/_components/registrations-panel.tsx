@@ -193,9 +193,10 @@ export function RegistrationsPanel({
 
   function downloadImportTemplate() {
     const rows = [
-      ["Verein", "Kontakt", "Email", "Mobil", "Kategorie", "Anzahl Teams", "Schiri", "Spielstärke", "Kosten", "Status"],
-      ["SV Musterstadt", "Max Mustermann", "max@sv-musterstadt.de", "01701234567", "E-Jugend", "2", "ja", "Fortgeschritten", "50", "bezahlt"],
-      ["SV Musterstadt", "Max Mustermann", "max@sv-musterstadt.de", "01701234567", "Mini 1 (Fortgeschrittene)", "1", "nein", "", "95", "angemeldet"],
+      ["Verein", "Kontakt", "Email", "Mobil", "Teamjugend", "Geschlecht", "Anzahl Teams", "Schiri", "Spielstärke", "Kosten", "Status"],
+      ["SV Musterstadt", "Max Mustermann", "max@sv-musterstadt.de", "01701234567", "E-Jugend", "gemischt", "2", "ja", "Standard", "50", "bezahlt"],
+      ["SV Schwabenland", "", "", "", "A-Jugend", "männlich", "1", "nein", "Leistung", "", ""],
+      ["SV Schwabenland", "", "", "", "B-Jugend", "weiblich", "1", "nein", "Standard", "", ""],
     ];
     const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
     const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
@@ -221,7 +222,7 @@ export function RegistrationsPanel({
                 Teams und Zahlungen importieren
               </CardTitle>
               <p className="!mt-1 text-sm text-muted-foreground">
-                CSV oder XLSX mit Überschriften einlesen und vorhandene Vereine aktualisieren.
+                CSV oder XLSX mit Überschriften einlesen. Minimal reichen Verein, Teamjugend, Geschlecht und Spielstärke.
               </p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={downloadImportTemplate} className="w-full lg:w-auto">
@@ -280,7 +281,7 @@ export function RegistrationsPanel({
               <span className="min-w-0 break-words">Teams vorhandener Vereine ersetzen</span>
             </label>
             <span className="min-w-0 break-words">
-              {importFile ? importFile.name : "Erwartete Spalten: Verein, Kontakt, Email, Mobil, Kategorie, Anzahl Teams, Schiri, Kosten, Status"}
+              {importFile ? importFile.name : "Spalten: Verein, Teamjugend/Kategorie, Geschlecht, Spielstärke; optional Kontakt, Email, Mobil, Anzahl Teams, Schiri, Kosten, Status"}
             </span>
           </div>
 

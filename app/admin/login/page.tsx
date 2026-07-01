@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import PasskeyLogin from "@/components/PasskeyLogin";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function AdminLoginPage() {
     const normalizedEmail = email.trim();
 
     if (!normalizedEmail || !password) {
-      setError("Bitte geben Sie E-Mail und Passwort ein.");
+      setError("Bitte geben Sie Benutzername/E-Mail und Passwort ein.");
       return;
     }
 
@@ -101,13 +102,13 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">E-Mail</Label>
+              <Label htmlFor="email">Benutzername/E-Mail</Label>
               <Input
                 id="email"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="admin@sv-puschendorf.de"
+                placeholder="admin"
                 disabled={isLoading}
                 autoComplete="username"
               />
@@ -151,6 +152,14 @@ export default function AdminLoginPage() {
               )}
             </Button>
           </form>
+
+          <PasskeyLogin
+            onSuccess={() => router.push("/admin")}
+            onError={(message) => {
+              setError(message);
+              setSuccess(false);
+            }}
+          />
         </CardContent>
       </Card>
     </div>

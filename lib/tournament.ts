@@ -28,7 +28,7 @@ export const TEAM_CATEGORIES = [
   { id: 'a-maennlich', name: 'A-Jugend männlich', needsSkill: true, day: 'Sonntag' },
 ] as const;
 
-export const SKILL_LEVELS = ['Anfänger', 'Fortgeschritten', 'Leistung'] as const;
+export const SKILL_LEVELS = ['Anfänger', 'Standard', 'Leistung'] as const;
 
 const CATEGORY_NAMES_WITH_SKILL = new Set(
   TEAM_CATEGORIES
@@ -45,6 +45,7 @@ const SCHEDULE_SKILL_SUFFIXES = new Set([
   'sehr erfahren',
   'leistung',
   'standard',
+  'standart',
 ]);
 
 export function formatScheduleCategoryLabel(category: string) {
@@ -67,11 +68,86 @@ export function formatScheduleCategoryLabel(category: string) {
   return category;
 }
 
+export type TeamDisplayNameMap = ReadonlyMap<string, string>;
+
+const TEAM_NUMBER_SUFFIX_PATTERN = /\s+(\d+)$/;
+const TEAM_CATEGORY_SUFFIX_PATTERN =
+  /\s+(?:mini(?:\s*\d+)?(?:\s*\([^)]*\))?|[a-e]-jugend(?:\s+(?:weiblich|männlich|maennlich|mannlich|gemischt))?|(?:w|m|g|gm)[a-e])$/i;
+
+export function createTeamDisplayNameMap(teamNames: string[]) {
+  const normalizedTeamNames = Array.from(
+    new Set(teamNames.map(normalizeTeamDisplayInput).filter(Boolean))
+  );
+  const groupedByBaseKey = new Map<string, string[]>();
+
+  normalizedTeamNames.forEach((teamName) => {
+    const baseKey = getTeamDisplayKey(teamName);
+    const group = groupedByBaseKey.get(baseKey) || [];
+
+    group.push(teamName);
+    groupedByBaseKey.set(baseKey, group);
+  });
+
+  const displayNames = new Map<string, string>();
+
+  groupedByBaseKey.forEach((teamNamesForBase) => {
+    const sortedTeamNames = [...teamNamesForBase].sort((a, b) =>
+      a.localeCompare(b, 'de-DE', { numeric: true, sensitivity: 'base' })
+    );
+
+    sortedTeamNames.forEach((teamName, index) => {
+      const baseName = getTeamDisplayBaseName(teamName);
+      const displayName = sortedTeamNames.length > 1
+        ? `${baseName} ${index + 1}`
+        : baseName;
+
+      displayNames.set(teamName, displayName);
+    });
+  });
+
+  return displayNames;
+}
+
+export function formatTeamDisplayName(teamName: string, displayNameMap?: TeamDisplayNameMap) {
+  const normalizedName = normalizeTeamDisplayInput(teamName);
+
+  return displayNameMap?.get(normalizedName) || getTeamDisplayBaseName(normalizedName);
+}
+
+export function getTeamDisplayBaseName(teamName: string) {
+  const normalizedName = normalizeTeamDisplayInput(teamName);
+  const nameWithoutNumber = normalizedName.replace(TEAM_NUMBER_SUFFIX_PATTERN, '').trim();
+  const nameWithoutCategory = nameWithoutNumber
+    .replace(TEAM_CATEGORY_SUFFIX_PATTERN, '')
+    .trim();
+
+  return nameWithoutCategory || nameWithoutNumber || normalizedName;
+}
+
+export function getTeamDisplayKey(teamName: string) {
+  return normalizeTeamDisplayKey(getTeamDisplayBaseName(teamName));
+}
+
+function normalizeTeamDisplayInput(value: string) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTeamDisplayKey(value: string) {
+  return normalizeTeamDisplayInput(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export interface AnmeldungTeam {
   kategorie: string;
   anzahl: number;
   schiri: boolean;
   spielstaerke?: string;
+  schiriName?: string;
 }
 
 export interface AnmeldungContact {
@@ -92,6 +168,39 @@ export interface FeldTagesEinstellungen {
   zweiHalbzeiten: boolean;
 }
 
+export function getSpielzeitRegelForKategorie(categoryName: string): FeldTagesEinstellungen {
+  const normalized = normalizeSpielzeitKategorie(categoryName);
+
+  if (normalized.startsWith('mini') || normalized.startsWith('ejugend')) {
+    return createSpielzeitRegel(7);
+  }
+
+  if (normalized.startsWith('djugend')) {
+    return createSpielzeitRegel(10);
+  }
+
+  return createSpielzeitRegel(13);
+}
+
+function createSpielzeitRegel(spielzeit: number): FeldTagesEinstellungen {
+  return {
+    spielzeit,
+    pausenzeit: 2,
+    halbzeitpause: 0,
+    zweiHalbzeiten: false,
+  };
+}
+
+function normalizeSpielzeitKategorie(value: string) {
+  return value
+    .replace(/\([^)]*\)/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 export interface FeldEinstellungen extends FeldTagesEinstellungen {
   id: string;
   name: string;
@@ -108,6 +217,15 @@ export interface TournamentScheduleSettings {
   samstagEndzeit: string;
   sonntagStartzeit: string;
   sonntagEndzeit: string;
+}
+
+export interface SpielplanZeitblock {
+  id: string;
+  label: string;
+  datum: string;
+  startzeit: string;
+  endzeit: string;
+  kategorien: string[];
 }
 
 export type PartialTournamentScheduleSettings = Partial<TournamentScheduleSettings>;
@@ -132,6 +250,72 @@ export const DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS: TournamentScheduleSettings = 
   sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
   sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
 };
+
+export function getDefaultSpielplanZeitbloecke(
+  settings: TournamentScheduleSettings = DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS
+): SpielplanZeitblock[] {
+  return [
+    {
+      id: 'samstag-mini-e',
+      label: 'Mini und E-Jugend',
+      datum: settings.turnierStartDatum,
+      startzeit: settings.samstagStartzeit,
+      endzeit: settings.samstagEndzeit,
+      kategorien: ['Mini', 'Mini 1', 'Mini 2', 'Mini 3', 'E-Jugend'],
+    },
+    {
+      id: 'sonntag-d',
+      label: 'D-Jugend',
+      datum: settings.turnierEndDatum,
+      startzeit: '10:00',
+      endzeit: '13:00',
+      kategorien: ['D-Jugend weiblich', 'D-Jugend männlich'],
+    },
+    {
+      id: 'sonntag-cba',
+      label: 'C-, B- und A-Jugend',
+      datum: settings.turnierEndDatum,
+      startzeit: '13:15',
+      endzeit: settings.sonntagEndzeit,
+      kategorien: [
+        'C-Jugend weiblich',
+        'C-Jugend männlich',
+        'B-Jugend weiblich',
+        'B-Jugend männlich',
+        'A-Jugend weiblich',
+        'A-Jugend männlich',
+      ],
+    },
+  ];
+}
+
+export function normalizeSpielplanZeitbloecke(
+  value: unknown,
+  settings: TournamentScheduleSettings = DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS
+): SpielplanZeitblock[] {
+  const source = Array.isArray(value) && value.length > 0
+    ? value
+    : getDefaultSpielplanZeitbloecke(settings);
+
+  return source
+    .map((item, index) => {
+      const input = item as Partial<SpielplanZeitblock>;
+      const fallback = getDefaultSpielplanZeitbloecke(settings)[index];
+      const kategorien = Array.isArray(input.kategorien)
+        ? input.kategorien.filter(isNonEmptyString)
+        : fallback?.kategorien ?? [];
+
+      return {
+        id: isNonEmptyString(input.id) ? input.id : `zeitblock-${index + 1}`,
+        label: isNonEmptyString(input.label) ? input.label : fallback?.label ?? `Zeitblock ${index + 1}`,
+        datum: isNonEmptyString(input.datum) ? input.datum : fallback?.datum ?? settings.turnierStartDatum,
+        startzeit: isValidTime(input.startzeit) ? input.startzeit : fallback?.startzeit ?? settings.samstagStartzeit,
+        endzeit: isValidTime(input.endzeit) ? input.endzeit : fallback?.endzeit ?? settings.samstagEndzeit,
+        kategorien,
+      };
+    })
+    .filter((block) => block.kategorien.length > 0 && timeToMinutes(block.endzeit) > timeToMinutes(block.startzeit));
+}
 
 export const DEFAULT_FELD_EINSTELLUNGEN: FeldEinstellungen[] = [
   { id: 'feld1', name: 'Feld 1', spielzeit: 10, pausenzeit: 2, halbzeitpause: 0, zweiHalbzeiten: false, erlaubteJahrgaenge: [], erlaubteJahrgaengeProTag: {}, aktiveTage: {}, einstellungenProTag: {} },
@@ -287,6 +471,33 @@ function toNonNegativeInteger(value: unknown, fallback: number) {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidTime(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+
+  if (!match) {
+    return false;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  return Number.isInteger(hours)
+    && Number.isInteger(minutes)
+    && hours >= 0
+    && hours <= 23
+    && minutes >= 0
+    && minutes <= 59;
+}
+
+function timeToMinutes(value: string) {
+  const [hours = 0, minutes = 0] = value.split(':').map(Number);
+  return hours * 60 + minutes;
 }
 
 export function getCategoryByName(categoryName: string) {

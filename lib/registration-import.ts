@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 
 import type { RegistrationImportEntry, RegistrationImportTeam, RegistrationImportWarning } from './db';
+import { TEAM_CATEGORIES, SKILL_LEVELS } from './tournament';
 
 type CanonicalColumn =
   | 'id'
@@ -9,8 +10,10 @@ type CanonicalColumn =
   | 'email'
   | 'mobil'
   | 'kategorie'
+  | 'geschlecht'
   | 'anzahl'
   | 'schiri'
+  | 'schiriName'
   | 'spielstaerke'
   | 'kosten'
   | 'status'
@@ -31,7 +34,7 @@ export async function parseRegistrationImportFile(filename: string, buffer: Arra
   const normalizedFilename = filename.toLowerCase();
 
   if (normalizedFilename.endsWith('.xlsx')) {
-    return rowsFromMatrix(await parseXlsx(buffer));
+    return (await parseXlsx(buffer)).flatMap((sheetRows) => rowsFromMatrix(sheetRows));
   }
 
   if (normalizedFilename.endsWith('.csv') || normalizedFilename.endsWith('.txt')) {
@@ -101,7 +104,11 @@ function rowsFromMatrix(matrix: string[][]): ParsedImportRow[] {
     return [];
   }
 
-  const headers = matrix[headerIndex].map((header) => canonicalColumn(header));
+  const headers = resolveImportHeaders(matrix[headerIndex]);
+  if (!headers.some(Boolean)) {
+    return [];
+  }
+
   const rows: ParsedImportRow[] = [];
 
   for (let index = headerIndex + 1; index < matrix.length; index += 1) {
@@ -126,6 +133,24 @@ function rowsFromMatrix(matrix: string[][]): ParsedImportRow[] {
   }
 
   return rows;
+}
+
+function resolveImportHeaders(rawHeaders: string[]) {
+  const headers = rawHeaders.map((header) => canonicalColumn(header));
+  const hasCategory = headers.includes('kategorie');
+  const hasTeamList = headers.includes('teamsText');
+  const hasRowTeamDetails = headers.includes('spielstaerke') || headers.includes('anzahl') || headers.includes('geschlecht');
+
+  if (!hasCategory && hasTeamList && hasRowTeamDetails) {
+    return headers.map((header, index) => {
+      const normalized = normalizeHeader(rawHeaders[index]);
+      return header === 'teamsText' && ['team', 'teams', 'mannschaft', 'mannschaften'].includes(normalized)
+        ? 'kategorie'
+        : header;
+    });
+  }
+
+  return headers;
 }
 
 function parseCsv(text: string) {
@@ -178,42 +203,74 @@ function parseCsv(text: string) {
 async function parseXlsx(buffer: ArrayBuffer) {
   const zip = await JSZip.loadAsync(buffer);
   const sharedStrings = await readSharedStrings(zip);
-  const sheetPath = await findFirstSheetPath(zip);
-  const sheet = zip.file(sheetPath);
+  const sheetPaths = await findSheetPaths(zip);
+  const sheets: string[][][] = [];
 
-  if (!sheet) {
-    throw new Error('In der XLSX-Datei wurde kein erstes Tabellenblatt gefunden.');
+  for (const sheetPath of sheetPaths) {
+    const sheet = zip.file(sheetPath);
+
+    if (sheet) {
+      sheets.push(parseWorksheetXml(await sheet.async('text'), sharedStrings));
+    }
   }
 
-  return parseWorksheetXml(await sheet.async('text'), sharedStrings);
+  if (sheets.length === 0) {
+    throw new Error('In der XLSX-Datei wurde kein Tabellenblatt gefunden.');
+  }
+
+  return sheets;
 }
 
-async function findFirstSheetPath(zip: JSZip) {
+async function findSheetPaths(zip: JSZip) {
   const workbookXml = await zip.file('xl/workbook.xml')?.async('text');
   const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('text');
 
   if (workbookXml && relsXml) {
-    const sheetId = workbookXml.match(/<sheet\b[^>]*\br:id="([^"]+)"/)?.[1];
-    if (sheetId) {
-      const relationship = new RegExp(`<Relationship\\b[^>]*\\bId="${escapeRegExp(sheetId)}"[^>]*>`, 'i').exec(relsXml)?.[0];
-      const target = relationship?.match(/\bTarget="([^"]+)"/)?.[1];
+    const relationships = new Map<string, string>();
 
-      if (target) {
-        return target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
+    for (const relMatch of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+      const attrs = relMatch[1];
+      const id = attrs.match(/\bId="([^"]+)"/)?.[1];
+      const target = attrs.match(/\bTarget="([^"]+)"/)?.[1];
+
+      if (id && target) {
+        relationships.set(id, target);
       }
+    }
+
+    const orderedSheetPaths = Array.from(workbookXml.matchAll(/<sheet\b[^>]*\br:id="([^"]+)"/g))
+      .map((match) => relationships.get(match[1]))
+      .filter((target): target is string => Boolean(target))
+      .map(resolveWorkbookRelationshipTarget)
+      .filter((path) => Boolean(zip.file(path)));
+
+    if (orderedSheetPaths.length > 0) {
+      return orderedSheetPaths;
     }
   }
 
-  if (zip.file('xl/worksheets/sheet1.xml')) {
-    return 'xl/worksheets/sheet1.xml';
-  }
+  const worksheets = Object.keys(zip.files)
+    .filter((path) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(path))
+    .sort((a, b) => {
+      const first = Number(a.match(/sheet(\d+)\.xml/i)?.[1] || 0);
+      const second = Number(b.match(/sheet(\d+)\.xml/i)?.[1] || 0);
 
-  const worksheet = Object.keys(zip.files).find((path) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(path));
-  if (worksheet) {
-    return worksheet;
+      return first - second;
+    });
+
+  if (worksheets.length > 0) {
+    return worksheets;
   }
 
   throw new Error('In der XLSX-Datei wurde kein Tabellenblatt gefunden.');
+}
+
+function resolveWorkbookRelationshipTarget(target: string) {
+  if (target.startsWith('/')) {
+    return target.slice(1);
+  }
+
+  return `xl/${target.replace(/^\.\//, '')}`;
 }
 
 async function readSharedStrings(zip: JSZip) {
@@ -287,9 +344,22 @@ function canonicalColumn(header: string): CanonicalColumn | null {
     handy: 'mobil',
     mobile: 'mobil',
     kategorie: 'kategorie',
+    jugend: 'kategorie',
+    teamjugend: 'kategorie',
+    mannschaftsjugend: 'kategorie',
+    altersgruppe: 'kategorie',
     jahrgang: 'kategorie',
     altersklasse: 'kategorie',
     gruppe: 'kategorie',
+    geschlecht: 'geschlecht',
+    gender: 'geschlecht',
+    mw: 'geschlecht',
+    mwd: 'geschlecht',
+    mwu: 'geschlecht',
+    mwn: 'geschlecht',
+    weiblichmaennlichgemischt: 'geschlecht',
+    mannlichweiblichgemischt: 'geschlecht',
+    maennlichweiblichgemischt: 'geschlecht',
     anzahl: 'anzahl',
     anzahlteams: 'anzahl',
     teamanzahl: 'anzahl',
@@ -297,6 +367,17 @@ function canonicalColumn(header: string): CanonicalColumn | null {
     schiri: 'schiri',
     schiedsrichter: 'schiri',
     referee: 'schiri',
+    schiris: 'schiriName',
+    anzahlschiri: 'schiriName',
+    anzahlschiris: 'schiriName',
+    schiriname: 'schiriName',
+    schiriteam: 'schiriName',
+    schiriverein: 'schiriName',
+    schiedsrichtername: 'schiriName',
+    schiedsrichterteam: 'schiriName',
+    schiedsrichterverein: 'schiriName',
+    refereeprovider: 'schiriName',
+    refereeteam: 'schiriName',
     spielstaerke: 'spielstaerke',
     spielstarke: 'spielstaerke',
     staerke: 'spielstaerke',
@@ -321,14 +402,18 @@ function canonicalColumn(header: string): CanonicalColumn | null {
 
 function parseTeams(values: Partial<Record<CanonicalColumn, string>>) {
   const teams: RegistrationImportTeam[] = [];
-  const category = read(values.kategorie);
+  const category = normalizeTeamCategory(values.kategorie, values.geschlecht, values.spielstaerke);
+  const skillLevel = normalizeSkillLevel(values.spielstaerke);
+  const schiriName = parseRefereeProvider(values.schiriName) || parseRefereeProvider(values.schiri);
+  const hasReferee = parseBoolean(values.schiri) ?? Boolean(schiriName);
 
   if (category) {
     teams.push({
       kategorie: category,
       anzahl: parsePositiveInteger(values.anzahl) || 1,
-      schiri: parseBoolean(values.schiri) ?? false,
-      spielstaerke: read(values.spielstaerke) || undefined,
+      schiri: hasReferee,
+      schiriName,
+      spielstaerke: shouldKeepSkillLevel(category, skillLevel) ? skillLevel : undefined,
     });
   }
 
@@ -373,12 +458,215 @@ function parseTeamListItem(value: string): RegistrationImportTeam | null {
     return null;
   }
 
+  const skillLevel = normalizeSkillLevel(details);
+  const normalizedCategory = normalizeTeamCategory(category, details, details);
+  const schiriName = parseRefereeProvider(details, false);
+
   return {
-    kategorie: category,
+    kategorie: normalizedCategory,
     anzahl: Number.isFinite(count) && count > 0 ? count : 1,
-    schiri: /\bschiri\b/i.test(details) && !/\b(ohne|kein|keine|nein)\b/i.test(details),
-    spielstaerke: details.match(/\b(Anfaenger|Anfänger|Fortgeschritten|Leistung)\b/i)?.[1],
+    schiri: Boolean(schiriName) || /\bschiri\b/i.test(details) && !/\b(ohne|kein|keine|nein)\b/i.test(details),
+    schiriName,
+    spielstaerke: shouldKeepSkillLevel(normalizedCategory, skillLevel) ? skillLevel : undefined,
   };
+}
+
+function normalizeTeamCategory(categoryValue: string | undefined, genderValue?: string | undefined, skillValue?: string | undefined) {
+  const rawCategory = read(categoryValue);
+
+  if (!rawCategory) {
+    return '';
+  }
+
+  const shortCategory = normalizeShortHandballCategory(rawCategory);
+  if (shortCategory) {
+    return shortCategory;
+  }
+
+  const miniCategory = normalizeMiniCategory(rawCategory, skillValue);
+  if (miniCategory) {
+    return miniCategory;
+  }
+
+  const knownCategory = findKnownCategory(rawCategory);
+  const explicitGender = parseGender(genderValue);
+  const embeddedGender = parseGender(rawCategory);
+  const gender = explicitGender || embeddedGender;
+
+  if (knownCategory && !explicitGender) {
+    return knownCategory;
+  }
+
+  const baseCategory = normalizeBaseCategory(stripGender(rawCategory));
+
+  if (!gender) {
+    return findKnownCategory(baseCategory) || baseCategory;
+  }
+
+  return findKnownCategory(`${baseCategory} ${gender.label}`) || `${baseCategory} ${gender.label}`;
+}
+
+function normalizeShortHandballCategory(value: string) {
+  const normalized = normalizeHeader(value);
+  const match = normalized.match(/^(w|m|g|gm)?([abcde])$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const genderCode = match[1] || '';
+  const baseCategory = `${match[2].toUpperCase()}-Jugend`;
+
+  if (!genderCode) {
+    return findKnownCategory(baseCategory) || baseCategory;
+  }
+
+  const genderLabel = genderCode === 'w'
+    ? 'weiblich'
+    : genderCode === 'm'
+      ? 'männlich'
+      : 'gemischt';
+
+  return findKnownCategory(`${baseCategory} ${genderLabel}`) || `${baseCategory} ${genderLabel}`;
+}
+
+function normalizeMiniCategory(categoryValue: string, skillValue?: string) {
+  const normalized = normalizeHeader(categoryValue);
+  const explicitMini = normalized.match(/^mini([123])$/)?.[1];
+  const numericSkill = normalizeNumericSkillLevel(skillValue);
+
+  if (explicitMini) {
+    return findKnownCategory(`Mini ${explicitMini}`) || `Mini ${explicitMini}`;
+  }
+
+  if (['mini', 'minis'].includes(normalized) && numericSkill) {
+    return findKnownCategory(`Mini ${numericSkill}`) || `Mini ${numericSkill}`;
+  }
+
+  return null;
+}
+
+function normalizeBaseCategory(value: string) {
+  const cleaned = read(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, '-')
+    .trim();
+  const normalized = normalizeHeader(cleaned);
+
+  const ageMatch = normalized.match(/^([abcde])(?:jugend)?$/);
+  if (ageMatch) {
+    return `${ageMatch[1].toUpperCase()}-Jugend`;
+  }
+
+  if (['minis', 'mini'].includes(normalized)) {
+    return 'Mini';
+  }
+
+  const miniMatch = normalized.match(/^mini([123])$/);
+  if (miniMatch) {
+    return findKnownCategory(`Mini ${miniMatch[1]}`) || `Mini ${miniMatch[1]}`;
+  }
+
+  return cleaned;
+}
+
+function stripGender(value: string) {
+  return read(value)
+    .replace(/\b(gemischt|gem\.?|mixed|mix|coed)\b/gi, '')
+    .replace(/\b(männlich|maennlich|mannlich|männl\.?|maennl\.?|mannl\.?|m\.?)\b/gi, '')
+    .replace(/\b(weiblich|weibl\.?|w\.?)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*-\s*$/g, '')
+    .trim();
+}
+
+function parseGender(value: string | undefined) {
+  const normalized = normalizeHeader(value || '');
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    ['gem', 'gemischt', 'mixed', 'mix', 'coed'].includes(normalized) ||
+    normalized.includes('gemischt') ||
+    normalized.includes('gem')
+  ) {
+    return { value: 'gemischt', label: 'gemischt' } as const;
+  }
+
+  if (
+    ['w', 'weiblich', 'weibl', 'wbl', 'female', 'f'].includes(normalized) ||
+    normalized.includes('weiblich') ||
+    normalized.includes('weibl')
+  ) {
+    return { value: 'weiblich', label: 'weiblich' } as const;
+  }
+
+  if (
+    ['m', 'mannlich', 'maennlich', 'mannl', 'maennl', 'mnl', 'monnl', 'moennl', 'male'].includes(normalized) ||
+    normalized.includes('mannlich') ||
+    normalized.includes('maennlich') ||
+    normalized.includes('mannl') ||
+    normalized.includes('maennl') ||
+    normalized.includes('monnl') ||
+    normalized.includes('moennl')
+  ) {
+    return { value: 'maennlich', label: 'männlich' } as const;
+  }
+
+  return null;
+}
+
+function normalizeSkillLevel(value: string | undefined) {
+  const raw = read(value);
+  const normalized = normalizeHeader(raw);
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  const numericSkill = normalizeNumericSkillLevel(raw);
+  if (numericSkill) {
+    return numericSkill;
+  }
+
+  if (['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) || normalized.includes('anfaeng')) {
+    return 'Anfänger';
+  }
+
+  if (
+    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
+    normalized.includes('leistung') ||
+    normalized.includes('sehrerfahren')
+  ) {
+    return 'Leistung';
+  }
+
+  if (
+    ['standard', 'standart', 'fortgeschritten', 'fortgeschrittene', 'erfahren', 'mittel', 'medium', 'advanced'].includes(normalized) ||
+    normalized.includes('fortgeschritten') ||
+    normalized.includes('erfahren')
+  ) {
+    return 'Standard';
+  }
+
+  return SKILL_LEVELS.find((level) => normalizeHeader(level) === normalized) || undefined;
+}
+
+function normalizeNumericSkillLevel(value: string | undefined) {
+  const raw = read(value);
+
+  return /^[1-3]$/.test(raw) ? raw : null;
+}
+
+function shouldKeepSkillLevel(category: string, skillLevel: string | undefined) {
+  return Boolean(skillLevel) && !normalizeHeader(category).startsWith('mini');
+}
+
+function findKnownCategory(value: string) {
+  const normalized = normalizeHeader(value);
+  return TEAM_CATEGORIES.find((category) => normalizeHeader(category.name) === normalized)?.name || null;
 }
 
 function parseRegistrationStatus(value: string | undefined): RegistrationImportEntry['status'] | undefined {
@@ -407,10 +695,40 @@ function parseBoolean(value: string | undefined) {
   const normalized = normalizeHeader(value || '');
 
   if (!normalized) return undefined;
-  if (['ja', 'yes', 'true', 'wahr', '1', 'x', 'schiri', 'mit'].includes(normalized)) return true;
-  if (['nein', 'no', 'false', 'falsch', '0', 'ohne', 'kein', 'keine'].includes(normalized)) return false;
+  if (['ja', 'yes', 'true', 'wahr', '1', 'x', 'schiri', 'mit', 'mitschiri', 'jaschiri'].includes(normalized)) return true;
+  if (['nein', 'no', 'false', 'falsch', '0', 'ohne', 'kein', 'keine', 'ohneschiri', 'keinschiri', 'keineschiri'].includes(normalized)) return false;
 
   return undefined;
+}
+
+function parseRefereeProvider(value: string | undefined, allowUnlabeled = true) {
+  const raw = read(value);
+
+  if (!raw || parseBoolean(raw) !== undefined) {
+    return undefined;
+  }
+
+  const labeled = raw.match(/(?:schiri|schiedsrichter|referee)\s*[:=-]\s*(.+)$/i);
+  if (!labeled && !allowUnlabeled) {
+    return undefined;
+  }
+
+  const provider = (labeled?.[1] || raw).replace(/\s+/g, ' ').trim();
+  const normalized = normalizeHeader(provider);
+
+  if (
+    !provider ||
+    /^\d+$/.test(provider) ||
+    ['mitschiri', 'ohneschiri', 'keinschiri', 'keineschiri', 'schiri', 'schiris', 'anzahlschiris'].includes(normalized)
+  ) {
+    return undefined;
+  }
+
+  if (/\b(ohne|kein|keine|nein|no)\b/i.test(provider)) {
+    return undefined;
+  }
+
+  return provider;
 }
 
 function parsePositiveInteger(value: string | undefined) {
@@ -430,9 +748,9 @@ function parseMoney(value: string | undefined) {
 }
 
 function mergeTeam(teams: RegistrationImportTeam[], team: RegistrationImportTeam) {
-  const key = `${normalizeHeader(team.kategorie)}|${team.schiri ? '1' : '0'}|${normalizeHeader(team.spielstaerke || '')}`;
+  const key = `${normalizeHeader(team.kategorie)}|${team.schiri ? '1' : '0'}|${normalizeHeader(team.schiriName || '')}|${normalizeHeader(team.spielstaerke || '')}`;
   const existing = teams.find((candidate) => {
-    const candidateKey = `${normalizeHeader(candidate.kategorie)}|${candidate.schiri ? '1' : '0'}|${normalizeHeader(candidate.spielstaerke || '')}`;
+    const candidateKey = `${normalizeHeader(candidate.kategorie)}|${candidate.schiri ? '1' : '0'}|${normalizeHeader(candidate.schiriName || '')}|${normalizeHeader(candidate.spielstaerke || '')}`;
     return candidateKey === key;
   });
 

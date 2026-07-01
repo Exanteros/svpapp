@@ -22,6 +22,7 @@ interface Spiel {
   ergebnis?: string | null;
   tore_team1?: number | null;
   tore_team2?: number | null;
+  schiedsrichter?: string | null;
 }
 
 export default function SchiedsrichterkartePage() {
@@ -140,6 +141,9 @@ export default function SchiedsrichterkartePage() {
               <CardTitle className="text-xl leading-tight">Ergebnis eintragen</CardTitle>
               <p className="!mt-2 text-sm text-muted-foreground">
                 {formatDate(spiel.datum)} · {spiel.zeit} Uhr · {spiel.kategorie}
+              </p>
+              <p className="!mt-2 text-sm font-medium text-[#4f5d2f]">
+                Schiri: {spiel.schiedsrichter || "Schiri offen"}
               </p>
             </div>
           </CardHeader>

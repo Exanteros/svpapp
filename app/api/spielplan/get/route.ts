@@ -21,6 +21,7 @@ interface Spiel {
   ergebnis?: string | null;
   tore_team1?: number | null;
   tore_team2?: number | null;
+  schiedsrichter?: string | null;
 }
 
 export async function GET(request: NextRequest) {

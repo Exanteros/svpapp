@@ -5,10 +5,7 @@ import { verifyApiAuth } from '@/lib/dal';
 export async function GET(request: NextRequest) {
   // Sicherheitsmaßnahme: Nur im Entwicklungsmodus verfügbar
   if (process.env.NODE_ENV !== 'development') {
-    return new Response(JSON.stringify({ error: 'Diese Route ist nur im Entwicklungsmodus verfügbar' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   // Verify authentication even in development

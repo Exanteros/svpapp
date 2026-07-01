@@ -13,6 +13,7 @@ interface ExportsPanelProps {
   onExportRegistrations: () => void;
   onExportStats: () => void;
   onExportSchedule: () => void;
+  onExportScheduleExcel: () => void;
   onPreviewSchedule: () => void;
 }
 
@@ -22,6 +23,7 @@ export function ExportsPanel({
   onExportRegistrations,
   onExportStats,
   onExportSchedule,
+  onExportScheduleExcel,
   onPreviewSchedule,
 }: ExportsPanelProps) {
   const exportGroups = [
@@ -45,8 +47,8 @@ export function ExportsPanel({
       ],
     },
     {
-      title: "PDF",
-      description: "Spielplan prüfen und als druckfähige Datei sichern.",
+      title: "Spielplan",
+      description: "Spielplan prüfen und als druckfähige oder editierbare Datei sichern.",
       icon: FileText,
       actions: [
         {
@@ -54,6 +56,12 @@ export function ExportsPanel({
           description: "Druckfähigen Spielplan herunterladen",
           icon: Download,
           onClick: onExportSchedule,
+        },
+        {
+          title: "Spielplan Excel",
+          description: "Bearbeitbare XLSX-Datei herunterladen",
+          icon: Table2,
+          onClick: onExportScheduleExcel,
         },
         {
           title: "PDF Vorschau",

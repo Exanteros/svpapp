@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decrypt } from '@/lib/session';
+import { decrypt } from '@/lib/session-token';
 
 // 1. Specify protected and public routes
 const protectedRoutes = ['/admin'];
@@ -11,8 +11,9 @@ export default async function middleware(req: NextRequest) {
   
   // Important: Check login route first before checking protected routes
   const isLoginRoute = path === '/admin/login';
-  const isProtectedRoute = path.startsWith('/admin') && !isLoginRoute;
-  const isPublicRoute = publicRoutes.includes(path) || isLoginRoute;
+  const isPasskeyInviteRoute = path.startsWith('/admin/passkey-invite/');
+  const isProtectedRoute = path.startsWith('/admin') && !isLoginRoute && !isPasskeyInviteRoute;
+  const isPublicRoute = publicRoutes.includes(path) || isLoginRoute || isPasskeyInviteRoute;
 
   // Skip authentication checks for login route and truly public routes
   if (isLoginRoute || isPublicRoute) {
@@ -28,6 +29,10 @@ export default async function middleware(req: NextRequest) {
             if (session?.userId) {
               return NextResponse.redirect(new URL('/admin', req.nextUrl));
             }
+
+            const response = NextResponse.next();
+            response.cookies.delete('session');
+            return response;
           }
         } catch (error) {
           // Clear invalid cookie and continue to login page
@@ -49,6 +54,11 @@ export default async function middleware(req: NextRequest) {
       // Only try to decrypt if cookie looks like a valid JWT (has dots)
       if (cookie.includes('.') && cookie.split('.').length === 3) {
         session = await decrypt(cookie);
+        if (!session) {
+          const response = NextResponse.redirect(new URL('/admin/login', req.nextUrl));
+          response.cookies.delete('session');
+          return response;
+        }
       }
     } catch (error) {
       // If decryption fails, clear the invalid cookie and redirect to login

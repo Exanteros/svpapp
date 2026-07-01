@@ -7,6 +7,7 @@ export type AdminSectionId =
   | "day"
   | "helpers"
   | "settings"
+  | "admins"
   | "exports";
 
 export interface Team {
@@ -15,6 +16,8 @@ export interface Team {
   anzahl: number;
   schiri: boolean | number;
   spielstaerke?: string | null;
+  schiriName?: string | null;
+  schiri_name?: string | null;
 }
 
 export interface Anmeldung {
@@ -41,6 +44,7 @@ export interface Spiel {
   ergebnis?: string | null;
   tore_team1?: number | null;
   tore_team2?: number | null;
+  schiedsrichter?: string | null;
 }
 
 export interface FeldTagesEinstellungen {
@@ -57,6 +61,15 @@ export interface FeldEinstellungen extends FeldTagesEinstellungen {
   erlaubteJahrgaengeProTag: Record<string, string[]>;
   aktiveTage: Record<string, boolean>;
   einstellungenProTag: Record<string, FeldTagesEinstellungen>;
+}
+
+export interface SpielplanZeitblock {
+  id: string;
+  label: string;
+  datum: string;
+  startzeit: string;
+  endzeit: string;
+  kategorien: string[];
 }
 
 export interface Statistiken {
@@ -90,6 +103,8 @@ export interface TurnierEinstellungen {
   samstagToreSichtbar: boolean;
   sonntagToreSichtbar: boolean;
   ergebnisTabellenAktiv: boolean;
+  spielzeitenAutomatisch: boolean;
+  spielplanZeitbloecke: SpielplanZeitblock[];
   spielplanStatus: SpielplanStatus;
   spielplanPublishedAt?: string | null;
 }
@@ -208,6 +223,40 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   samstagToreSichtbar: false,
   sonntagToreSichtbar: true,
   ergebnisTabellenAktiv: false,
+  spielzeitenAutomatisch: true,
+  spielplanZeitbloecke: [
+    {
+      id: "samstag-mini-e",
+      label: "Mini und E-Jugend",
+      datum: "2025-07-05",
+      startzeit: "13:00",
+      endzeit: "17:00",
+      kategorien: ["Mini", "Mini 1", "Mini 2", "Mini 3", "E-Jugend"],
+    },
+    {
+      id: "sonntag-d",
+      label: "D-Jugend",
+      datum: "2025-07-06",
+      startzeit: "10:00",
+      endzeit: "13:00",
+      kategorien: ["D-Jugend weiblich", "D-Jugend männlich"],
+    },
+    {
+      id: "sonntag-cba",
+      label: "C-, B- und A-Jugend",
+      datum: "2025-07-06",
+      startzeit: "13:15",
+      endzeit: "17:00",
+      kategorien: [
+        "C-Jugend weiblich",
+        "C-Jugend männlich",
+        "B-Jugend weiblich",
+        "B-Jugend männlich",
+        "A-Jugend weiblich",
+        "A-Jugend männlich",
+      ],
+    },
+  ],
   spielplanStatus: "draft",
   spielplanPublishedAt: null,
 };

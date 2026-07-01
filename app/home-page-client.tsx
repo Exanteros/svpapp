@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -113,13 +112,13 @@ function getTournamentDays(settings: TurnierEinstellungen) {
       label: "Samstag",
       date: formatDateLong(settings.turnierStartDatum),
       time: formatTime(settings.samstagStartzeit, settings.samstagEndzeit),
-      groups: ["Mini-Kategorien 3, 2 und 1", "E-Jugend weiblich, gemischt und männlich"],
+      groups: ["Minis", "E-Jugend"],
     },
     {
       label: "Sonntag",
       date: formatDateLong(settings.turnierEndDatum),
       time: formatTime(settings.sonntagStartzeit, settings.sonntagEndzeit),
-      groups: ["D- und C-Jugend weiblich und männlich", "B- und A-Jugend weiblich und männlich"],
+      groups: ["D-Jugend", "C-Jugend", "B-Jugend", "A-Jugend"],
     },
   ];
 }
@@ -172,31 +171,50 @@ export default function HomePageClient({
 
   return (
     <>
-      <section className="overflow-hidden border-b bg-[#f6f7f1]">
-        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_470px] lg:items-center lg:py-16">
+      <section className="relative isolate overflow-hidden border-b border-border/70">
+        <picture className="absolute inset-0 -z-20">
+          <source
+            type="image/avif"
+            sizes="100vw"
+            srcSet="/hero/jens-960.avif 960w, /hero/jens-1440.avif 1440w, /hero/jens-1920.avif 1920w, /hero/jens-2560.avif 2560w"
+          />
+          <source
+            type="image/webp"
+            sizes="100vw"
+            srcSet="/hero/jens-960.webp 960w, /hero/jens-1440.webp 1440w, /hero/jens-1920.webp 1920w, /hero/jens-2560.webp 2560w"
+          />
+          <img
+            src="/hero/jens-1920.webp"
+            alt="Handball-Turnier des SV Puschendorf"
+            className="h-full w-full scale-[1.015] object-cover blur-[1.5px]"
+            decoding="async"
+          />
+        </picture>
+        <div className="absolute inset-0 -z-10 bg-black/50" />
+        <div className="mx-auto flex min-h-[calc(100svh-4rem)] max-w-6xl flex-col justify-end px-4 pb-8 pt-24 text-white sm:px-6 lg:min-h-[680px] lg:pb-10">
           <div className="max-w-3xl">
             <div className="mb-6 flex flex-wrap gap-2">
-              <Badge variant="outline" className="gap-1.5 border-[#d9dec8] bg-white/75 text-[#4f5d2f]">
+              <Badge variant="outline" className="gap-1.5 border-white/25 bg-white/12 text-white backdrop-blur">
                 <CalendarDays className="size-3.5" />
                 Rasenturnier {tournamentYear}
               </Badge>
-              <Badge variant="outline" className="gap-1.5 border-[#d9dec8] bg-white/75 text-[#4f5d2f]">
+              <Badge variant="outline" className="gap-1.5 border-white/25 bg-white/12 text-white backdrop-blur">
                 <Clock className="size-3.5" />
                 {dateRange}
               </Badge>
             </div>
 
-            <h1 className="max-w-3xl text-4xl font-semibold leading-tight tracking-normal text-foreground sm:text-5xl lg:text-[3.35rem]">
+            <h1 className="max-w-4xl text-4xl font-semibold leading-tight tracking-normal text-white sm:text-6xl lg:text-[4.5rem]">
               Handball-Turnier des SV Puschendorf
             </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/78 sm:text-xl sm:leading-8">
               Eine ruhige Turnierübersicht für Anmeldung, Spielplan und Ergebnisse. Alles an einem Ort, ohne
               unnötigen Lärm.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               {turnierEinstellungen.anmeldungAktiv && (
-                <Button asChild size="lg" className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto">
+                <Button asChild size="lg" className="w-full bg-white text-zinc-950 hover:bg-white/90 sm:w-auto">
                   <Link href="/anmeldung">
                     <UserPlus className="size-4" />
                     Team anmelden
@@ -207,7 +225,7 @@ export default function HomePageClient({
                 asChild
                 variant="outline"
                 size="lg"
-                className="w-full border-[#cdd5bd] bg-white/70 text-[#4f5d2f] hover:bg-[#eef1e5] sm:w-auto"
+                className="w-full border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white sm:w-auto"
               >
                 <Link href="/spielplan">
                   <ClipboardList className="size-4" />
@@ -215,48 +233,19 @@ export default function HomePageClient({
                 </Link>
               </Button>
             </div>
-
-            <div className="mt-10 flex max-w-2xl flex-wrap items-center gap-x-5 gap-y-2 border-l-2 border-[#8a9868] pl-4 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">2 Turniertage</span>
-              <span>3 zentrale Ansichten</span>
-              <span>Live-Plan und Ergebnisse</span>
-            </div>
           </div>
 
-          <div className="relative min-h-[360px] overflow-hidden rounded-[8px] border bg-card shadow-sm sm:min-h-[430px]">
-            <Image
-              src="/turnier-field-v2.png"
-              alt="Rasenfeld mit Handballtoren beim SV Puschendorf Turnier"
-              fill
-              priority
-              sizes="(min-width: 1024px) 470px, 100vw"
-              className="object-cover"
-            />
-            <div className="absolute inset-0 bg-black/15" />
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-              <div className="rounded-[8px] border border-white/25 bg-white/90 p-4 shadow-sm backdrop-blur">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="!mt-0 text-xs font-medium uppercase text-muted-foreground">Turnierzeitraum</p>
-                    <p className="!mt-1 text-lg font-semibold leading-snug tracking-normal text-foreground">
-                      {dateRange}
-                    </p>
-                  </div>
-                  <CalendarDays className="mt-1 size-5 text-[#5e6d35]" />
-                </div>
-                <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-                  {tournamentDays.map((day) => (
-                    <div key={day.label} className="rounded-md border border-[#e3e7d7] bg-white/80 p-3">
-                      <div className="flex items-center gap-2 font-medium">
-                        <span className="size-2 rounded-full bg-[#5e6d35]" />
-                        {day.label}
-                      </div>
-                      <p className="!mt-1 text-muted-foreground">{day.time}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <div className="mt-12 grid gap-3 border-t border-white/18 pt-5 text-sm text-white/78 sm:grid-cols-3">
+            <div>
+              <div className="font-medium text-white">2 Turniertage</div>
+              <div className="mt-1">{dateRange}</div>
             </div>
+            {tournamentDays.map((day) => (
+              <div key={day.label}>
+                <div className="font-medium text-white">{day.label}</div>
+                <div className="mt-1">{day.time}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>

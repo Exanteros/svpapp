@@ -93,7 +93,9 @@ export default function AnmeldungPage() {
         "Anmeldung erfolgreich.",
         "",
         `Anmeldungs-ID: ${result.anmeldungId}`,
-        `Bestätigungsmail gesendet an: ${contactData.email}`,
+        result.emailSent
+          ? `Bestätigungsmail gesendet an: ${contactData.email}`
+          : "Es wurde keine Bestätigungsmail versendet. Bitte notieren Sie die Anmeldungs-ID.",
       ];
 
       alert(successMessage.join("\n"));

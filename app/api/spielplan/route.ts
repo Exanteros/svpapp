@@ -7,10 +7,11 @@ import {
   updateSpiel,
   deleteSpiel,
   deleteAllSpiele,
+  saveStoredFeldEinstellungen,
   setSpielplanPublicationStatus,
 } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
-import { generateSpielplan } from '@/lib/spielplan-generator';
+import { SpielplanGenerationError, generateSpielplan, optimizeSpielzeitenForSchedule } from '@/lib/spielplan-generator';
 import { notifySpielplanChanged } from '@/lib/spielplan-events';
 import { hideInternalScoresForPublic, type ScoreBearingSpiel } from '@/lib/tournament';
 
@@ -95,16 +96,29 @@ export async function POST(request: NextRequest) {
     
     if (action === 'generate') {
       // Spielplan-Generator
+      const autoSpielzeiten = body.settings?.spielzeitenAutomatisch !== false;
+      const optimized = autoSpielzeiten
+        ? optimizeSpielzeitenForSchedule({
+          settings: body.settings,
+          feldEinstellungen: body.feldEinstellungen,
+        })
+        : null;
+      const generationFields = optimized?.feldEinstellungen ?? body.feldEinstellungen;
       const generatedSpiele = generateSpielplan({
         settings: body.settings,
-        feldEinstellungen: body.feldEinstellungen,
+        feldEinstellungen: generationFields,
         replaceExisting: Boolean(body.replaceExisting),
       });
+      const feldEinstellungen = optimized
+        ? saveStoredFeldEinstellungen(optimized.feldEinstellungen)
+        : undefined;
       const publication = setSpielplanPublicationStatus('draft');
       notifySpielplanChanged({ reason: 'schedule-generate' });
       return NextResponse.json({
         message: 'Spielplan erfolgreich generiert',
         spiele: generatedSpiele,
+        feldEinstellungen,
+        spielzeitOptimierung: optimized?.optimierung ?? [],
         ...publication,
       });
     }
@@ -174,6 +188,13 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('❌ Fehler bei Spielplan-Operation:', error);
+    if (error instanceof SpielplanGenerationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Interner Serverfehler' },
       { status: 500 }

@@ -4,8 +4,10 @@ import { verifyApiAuth } from '@/lib/dal';
 import { createSession } from '@/lib/session';
 import {
   deletePasskey,
+  generateInviteRegistrationOptions,
   generatePasskeyAuthenticationOptions,
   generatePasskeyRegistrationOptions,
+  getAdminInviteInfo,
   getRegisteredPasskeys,
   hasRegisteredPasskeys,
   verifyPasskeyAuthentication,
@@ -31,6 +33,22 @@ export async function GET(request: NextRequest) {
       case 'is-supported':
         return NextResponse.json({ isSupported: true, isPlatformAvailable: true });
 
+      case 'invite-info': {
+        const token = searchParams.get('token') || '';
+        const invite = getAdminInviteInfo(token);
+
+        if (!invite) {
+          return NextResponse.json({ error: 'Einladungslink ist ungültig oder abgelaufen' }, { status: 404 });
+        }
+
+        return NextResponse.json({ invite });
+      }
+
+      case 'invite-registration-options': {
+        const token = searchParams.get('token') || '';
+        return NextResponse.json(await generateInviteRegistrationOptions(token, request.nextUrl.origin));
+      }
+
       case 'registration-options':
       case 'list-passkeys': {
         const authResult = await verifyApiAuth(request);
@@ -42,8 +60,12 @@ export async function GET(request: NextRequest) {
           );
         }
 
+        if (!authResult.user) {
+          return NextResponse.json({ error: 'Nicht authentifiziert' }, { status: 401 });
+        }
+
         if (action === 'registration-options') {
-          return NextResponse.json(await generatePasskeyRegistrationOptions(request.nextUrl.origin));
+          return NextResponse.json(await generatePasskeyRegistrationOptions(request.nextUrl.origin, authResult.user.id));
         }
 
         return NextResponse.json({ passkeys: getRegisteredPasskeys() });
@@ -63,21 +85,42 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     if (body.action === 'authenticate') {
-      const authResult = await verifyPasskeyAuthentication(
+      const passkeyAuthResult = await verifyPasskeyAuthentication(
         body.credential,
         String(body.challenge || ''),
         request.nextUrl.origin
       );
 
-      if (!authResult.success) {
+      if (!passkeyAuthResult.success || !passkeyAuthResult.user) {
         return NextResponse.json(
-          { success: false, error: authResult.error },
+          { success: false, error: passkeyAuthResult.error },
           { status: 401 }
         );
       }
 
-      await createSession(process.env.ADMIN_EMAIL || 'admin@sv-puschendorf.de');
+      await createSession(passkeyAuthResult.user.email, passkeyAuthResult.user.id);
       return NextResponse.json({ success: true, message: 'Authentifizierung erfolgreich' });
+    }
+
+    if (body.action === 'invite-register') {
+      const registrationResult = await verifyPasskeyRegistration(
+        body.credential,
+        String(body.challenge || ''),
+        request.nextUrl.origin
+      );
+
+      if (!registrationResult.success) {
+        return NextResponse.json(
+          { success: false, error: registrationResult.error },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        credentialId: registrationResult.credentialId,
+        message: 'Passkey erfolgreich registriert',
+      });
     }
 
     const apiAuthResult = await verifyApiAuth(request);

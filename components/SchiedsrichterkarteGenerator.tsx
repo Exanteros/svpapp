@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatTeamDisplayName } from "@/lib/tournament";
 
 interface Spiel {
   id: string;
@@ -20,6 +21,7 @@ interface Spiel {
   team2: string;
   status: string;
   ergebnis?: string | null;
+  schiedsrichter?: string | null;
 }
 
 interface SchiedsrichterkarteGeneratorProps {
@@ -39,24 +41,34 @@ interface UploadedLogo {
   aspectRatio: number;
 }
 
-const PAGE_WIDTH = 210;
-const PAGE_HEIGHT = 297;
-const PAGE_MARGIN = 8;
-const CARD_GAP = 3;
-const CARD_COLUMNS = 3;
-const CARD_ROWS = 3;
-const CARDS_PER_PAGE = CARD_COLUMNS * CARD_ROWS;
-const CARD_WIDTH = (PAGE_WIDTH - PAGE_MARGIN * 2 - CARD_GAP * (CARD_COLUMNS - 1)) / CARD_COLUMNS;
-const CARD_HEIGHT = (PAGE_HEIGHT - PAGE_MARGIN * 2 - CARD_GAP * (CARD_ROWS - 1)) / CARD_ROWS;
+const A6_PAGE_MARGIN = 4;
+const A6_CARD_GAP = 4;
+const BASE_CARD_WIDTH = 62.666;
+const BASE_CARD_HEIGHT = 92.333;
 const LOGO_STORAGE_KEY = "svp_referee_card_logo";
 const QR_SIZE = 6;
 const QR_Y = 9.1;
-const TEAM_ONE_Y = 16.2;
-const TEAM_TWO_Y = 22.2;
-const GOAL_STRIKE_Y = 30.4;
+const TEAM_ONE_Y = 18.1;
+const TEAM_TWO_Y = 24.1;
+const GOAL_STRIKE_Y = 32.4;
 const GOAL_GRID_GAP = 2;
 const GOAL_GRID_COLUMNS = 5;
 const GOAL_GRID_CELL_HEIGHT = 9.65;
+
+interface CardAsset {
+  spiel: Spiel;
+  qrDataUrl: string;
+  index: number;
+}
+
+interface CardBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type A6PdfLayout = "single" | "double";
 
 export default function SchiedsrichterkarteGenerator({
   spiele,
@@ -69,7 +81,8 @@ export default function SchiedsrichterkarteGenerator({
     () => spiele.filter((spiel) => spiel.team1 && spiel.team2),
     [spiele]
   );
-  const pageCount = Math.max(1, Math.ceil(playableGames.length / CARDS_PER_PAGE));
+  const singlePageCount = playableGames.length;
+  const doublePageCount = playableGames.length > 0 ? Math.ceil(playableGames.length / 2) : 0;
 
   useEffect(() => {
     try {
@@ -114,7 +127,7 @@ export default function SchiedsrichterkarteGenerator({
     toast.success("Logo entfernt");
   }
 
-  async function generateA4Cards() {
+  async function generateA6Cards() {
     if (playableGames.length === 0) {
       toast.error("Kein Spielplan vorhanden");
       return;
@@ -125,18 +138,9 @@ export default function SchiedsrichterkarteGenerator({
     try {
       const codes = await createScoreCodes(playableGames.map((spiel) => spiel.id));
       const codesByGameId = new Map(codes.map((code) => [code.spielId, code.code]));
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const cardAssets: CardAsset[] = [];
 
       for (let index = 0; index < playableGames.length; index++) {
-        if (index > 0 && index % CARDS_PER_PAGE === 0) {
-          doc.addPage();
-        }
-
-        const pageIndex = index % CARDS_PER_PAGE;
-        const column = pageIndex % CARD_COLUMNS;
-        const row = Math.floor(pageIndex / CARD_COLUMNS);
-        const x = PAGE_MARGIN + column * (CARD_WIDTH + CARD_GAP);
-        const y = PAGE_MARGIN + row * (CARD_HEIGHT + CARD_GAP);
         const spiel = playableGames[index];
         const scoreCode = codesByGameId.get(spiel.id);
 
@@ -154,12 +158,16 @@ export default function SchiedsrichterkarteGenerator({
           },
         });
 
-        drawCard(doc, spiel, qrDataUrl, uploadedLogo, x, y, index + 1, turnierName);
+        cardAssets.push({ spiel, qrDataUrl, index: index + 1 });
       }
 
-      addCutMarks(doc);
-      doc.save(`Schiedsrichterkarten_A4_${new Date().toISOString().slice(0, 10)}.pdf`);
-      toast.success(`${playableGames.length} Schiedsrichterkarten erstellt`);
+      const today = new Date().toISOString().slice(0, 10);
+      const singleDoc = createA6CardsPdf(cardAssets, uploadedLogo, turnierName, "single");
+      const doubleDoc = createA6CardsPdf(cardAssets, uploadedLogo, turnierName, "double");
+
+      singleDoc.save(`Schiedsrichterkarten_A6_1-pro-Seite_${today}.pdf`);
+      doubleDoc.save(`Schiedsrichterkarten_A6_2-pro-Seite_${today}.pdf`);
+      toast.success(`${playableGames.length} Schiedsrichterkarten in 2 PDF-Dateien erstellt`);
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Schiedsrichterkarten konnten nicht erstellt werden");
@@ -174,37 +182,39 @@ export default function SchiedsrichterkarteGenerator({
         <div>
           <CardTitle className="text-lg">Schiedsrichterkarten</CardTitle>
           <p className="!mt-1 text-sm text-muted-foreground">
-            DIN A4 Druckbogen mit 9 Spielpaarungen und App-Code zur Ergebniseingabe in der PWA.
+            DIN A6 Karten mit App-Code zur Ergebniseingabe in der PWA.
           </p>
         </div>
         <Badge variant="outline" className="w-fit border-[#d9dec8] text-[#5e6d35]">
-          {playableGames.length} Spiele · {pageCount} Seite(n)
+          {playableGames.length} Spiele · {singlePageCount} + {doublePageCount} A6-Seite(n)
         </Badge>
       </CardHeader>
-      <CardContent className="grid min-w-0 gap-4 px-0 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-center">
+      <CardContent className="grid min-w-0 gap-4 px-0">
         <div className="grid min-w-0 gap-3 md:grid-cols-3">
           <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
             <FileText className="mb-3 size-5 text-[#5e6d35]" />
-            <p className="!mt-0 break-words text-sm font-medium">A4 Layout</p>
-            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">3 x 3 Karten pro Seite, mit Schnittmarken.</p>
+            <p className="!mt-0 break-words text-sm font-medium">A6 Einzelkarten</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Eine Schiedsrichterkarte pro DIN A6-Seite.</p>
           </div>
           <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
             <QrCode className="mb-3 size-5 text-[#5e6d35]" />
-            <p className="!mt-0 break-words text-sm font-medium">App-Code</p>
-            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Kein Weblink: Der Code funktioniert im Admin/PWA-Scanner.</p>
+            <p className="!mt-0 break-words text-sm font-medium">A6 Doppelkarte</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Zwei Schiedsrichterkarten pro DIN A6-Querformatseite.</p>
           </div>
           <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-4">
-            <p className="!mt-0 break-words text-sm font-medium">Handy-Eingabe</p>
-            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Scan öffnet den rechten Ergebnisbereich.</p>
+            <p className="!mt-0 break-words text-sm font-medium">2 PDF-Dateien</p>
+            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">Einzelkarten und Doppelkarte werden getrennt gespeichert.</p>
           </div>
         </div>
-        <div className="grid min-w-0 gap-3">
-          <div className="min-w-0 overflow-hidden rounded-[8px] border bg-white p-3">
-            <p className="!mt-0 break-words text-sm font-medium">Logo oben rechts</p>
-            <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">
-              {uploadedLogo ? uploadedLogo.name : "Optionales Logo für jede Karte hochladen."}
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row xl:flex-col">
+        <div className="grid min-w-0 gap-3 rounded-[8px] border bg-[#f8faf5] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div className="min-w-0">
+              <p className="!mt-0 break-words text-sm font-medium">Logo oben rechts</p>
+              <p className="!mt-1 break-words text-xs leading-5 text-muted-foreground">
+                {uploadedLogo ? uploadedLogo.name : "Optionales Logo für jede Karte hochladen."}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
               <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-center text-sm font-medium leading-5 transition-colors hover:bg-accent">
                 <Upload className="size-4" />
                 <span className="min-w-0 break-words">Logo hochladen</span>
@@ -221,11 +231,11 @@ export default function SchiedsrichterkarteGenerator({
           <Button
             type="button"
             disabled={isGenerating || playableGames.length === 0}
-            onClick={generateA4Cards}
-            className="h-auto min-h-9 w-full whitespace-normal bg-[#5e6d35] text-white hover:bg-[#4f5d2f]"
+            onClick={generateA6Cards}
+            className="h-auto min-h-10 w-full whitespace-normal bg-[#5e6d35] px-4 text-white hover:bg-[#4f5d2f] lg:w-auto"
           >
             <FileText className="size-4" />
-            <span className="min-w-0 break-words">{isGenerating ? "PDF wird erstellt..." : "A4 Karten-PDF erstellen"}</span>
+            <span className="min-w-0 break-words">{isGenerating ? "PDFs werden erstellt..." : "A6 Karten-PDFs erstellen"}</span>
           </Button>
         </div>
       </CardContent>
@@ -306,55 +316,128 @@ async function createScoreCodes(spielIds: string[]) {
   return (data.codes || []) as ScoreCode[];
 }
 
+function createA6CardsPdf(
+  cards: CardAsset[],
+  logo: UploadedLogo | null,
+  turnierName: string,
+  layout: A6PdfLayout
+) {
+  const doc = new jsPDF({
+    orientation: layout === "double" ? "landscape" : "portrait",
+    unit: "mm",
+    format: "a6",
+  });
+  const cardsPerPage = layout === "double" ? 2 : 1;
+
+  for (let index = 0; index < cards.length; index++) {
+    if (index > 0 && index % cardsPerPage === 0) {
+      doc.addPage();
+    }
+
+    const pageIndex = index % cardsPerPage;
+    const bounds = layout === "double"
+      ? getDoubleA6CardBounds(doc, pageIndex)
+      : getSingleA6CardBounds(doc);
+    const card = cards[index];
+
+    drawCard(doc, card.spiel, card.qrDataUrl, logo, bounds, card.index, turnierName);
+  }
+
+  if (layout === "double") {
+    addA6DoubleCutMarks(doc);
+  }
+
+  return doc;
+}
+
+function getSingleA6CardBounds(doc: jsPDF): CardBounds {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  return {
+    x: A6_PAGE_MARGIN,
+    y: A6_PAGE_MARGIN,
+    width: pageWidth - A6_PAGE_MARGIN * 2,
+    height: pageHeight - A6_PAGE_MARGIN * 2,
+  };
+}
+
+function getDoubleA6CardBounds(doc: jsPDF, pageIndex: number): CardBounds {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const width = (pageWidth - A6_PAGE_MARGIN * 2 - A6_CARD_GAP) / 2;
+
+  return {
+    x: A6_PAGE_MARGIN + pageIndex * (width + A6_CARD_GAP),
+    y: A6_PAGE_MARGIN,
+    width,
+    height: pageHeight - A6_PAGE_MARGIN * 2,
+  };
+}
+
 function drawCard(
   doc: jsPDF,
   spiel: Spiel,
   qrDataUrl: string,
   logo: UploadedLogo | null,
-  x: number,
-  y: number,
+  bounds: CardBounds,
   index: number,
   turnierName: string
 ) {
+  const scale = Math.min(bounds.width / BASE_CARD_WIDTH, bounds.height / BASE_CARD_HEIGHT);
+  const cardWidth = BASE_CARD_WIDTH * scale;
+  const cardHeight = BASE_CARD_HEIGHT * scale;
+  const x = bounds.x + (bounds.width - cardWidth) / 2;
+  const y = bounds.y + (bounds.height - cardHeight) / 2;
+  const size = (value: number) => value * scale;
+
   doc.setDrawColor(40);
-  doc.setLineWidth(0.25);
-  doc.rect(x, y, CARD_WIDTH, CARD_HEIGHT);
+  doc.setLineWidth(size(0.25));
+  doc.rect(x, y, cardWidth, cardHeight);
 
   doc.setFillColor(246, 247, 241);
-  doc.rect(x, y, CARD_WIDTH, 7.2, "F");
+  doc.rect(x, y, cardWidth, size(7.2), "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(5.9);
-  doc.text("Schiedsrichterkarte", x + 2.5, y + 3.5);
+  doc.setFontSize(size(5.9));
+  doc.text("Schiedsrichterkarte", x + size(2.5), y + size(3.5));
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(4.4);
-  const logoBox = getLogoBox(logo, x + CARD_WIDTH - 11.4, y + 0.9, 8.9, 5.4);
-  const headerRight = logo ? logoBox.x - 1.6 : x + CARD_WIDTH - 2.5;
-  doc.text(`Nr. ${index}`, headerRight, y + 3.5, { align: "right" });
-  doc.text(trimText(doc, turnierName, headerRight - x - 2.5), x + 2.5, y + 6.2);
+  doc.setFontSize(size(4.4));
+  const logoBox = getLogoBox(logo, x + cardWidth - size(11.4), y + size(0.9), size(8.9), size(5.4));
+  const headerRight = logo ? logoBox.x - size(1.6) : x + cardWidth - size(2.5);
+  doc.text(`Nr. ${index}`, headerRight, y + size(3.5), { align: "right" });
+  doc.text(trimText(doc, turnierName, headerRight - x - size(2.5)), x + size(2.5), y + size(6.2));
 
   if (logo) {
     doc.addImage(logo.dataUrl, "PNG", logoBox.x, logoBox.y, logoBox.width, logoBox.height);
   }
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(4.6);
-  const qrX = x + CARD_WIDTH - QR_SIZE - 2.5;
-  const qrY = y + QR_Y;
-  const infoWidth = CARD_WIDTH - QR_SIZE - 9;
-  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), x + 2.5, y + 10.4);
+  doc.setFontSize(size(4.6));
+  const qrSize = size(QR_SIZE);
+  const qrX = x + cardWidth - qrSize - size(2.5);
+  const qrY = y + size(QR_Y);
+  const infoWidth = cardWidth - qrSize - size(9);
+  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), x + size(2.5), y + size(10.4));
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(5.8);
-  doc.text(trimText(doc, spiel.feld, infoWidth), x + 2.5, y + 12.9);
+  doc.setFontSize(size(5.8));
+  doc.text(trimText(doc, spiel.feld, infoWidth), x + size(2.5), y + size(12.9));
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(size(3.5));
+  doc.text(
+    trimText(doc, `Schiri: ${spiel.schiedsrichter || "Schiri offen"}`, infoWidth),
+    x + size(2.5),
+    y + size(15.1)
+  );
 
-  doc.addImage(qrDataUrl, "PNG", qrX, qrY, QR_SIZE, QR_SIZE);
+  doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(3.2);
-  doc.text("Scan", qrX + QR_SIZE / 2, qrY + QR_SIZE + 1.4, { align: "center" });
+  doc.setFontSize(size(3.2));
+  doc.text("Scan", qrX + qrSize / 2, qrY + qrSize + size(1.4), { align: "center" });
 
-  drawTeamBox(doc, x + 2.5, y + TEAM_ONE_Y, CARD_WIDTH - 5, spiel.team1, "Team 1");
-  drawTeamBox(doc, x + 2.5, y + TEAM_TWO_Y, CARD_WIDTH - 5, spiel.team2, "Team 2");
+  drawTeamBox(doc, x + size(2.5), y + size(TEAM_ONE_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team1), "Team 1", scale);
+  drawTeamBox(doc, x + size(2.5), y + size(TEAM_TWO_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team2), "Team 2", scale);
 
-  drawGoalStrikeList(doc, x + 2.5, y + GOAL_STRIKE_Y, CARD_WIDTH - 5);
+  drawGoalStrikeList(doc, x + size(2.5), y + size(GOAL_STRIKE_Y), cardWidth - size(5), scale);
 }
 
 function getLogoBox(
@@ -385,37 +468,42 @@ function getLogoBox(
   };
 }
 
-function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: string, label: string) {
+function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: string, label: string, scale: number) {
   doc.setDrawColor(80);
-  doc.setLineWidth(0.15);
-  doc.rect(x, y, width, 5.1);
+  doc.setLineWidth(0.15 * scale);
+  doc.rect(x, y, width, 5.1 * scale);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(3.4);
-  doc.text(label, x + 1.5, y + 1.9);
+  doc.setFontSize(3.4 * scale);
+  doc.text(label, x + 1.5 * scale, y + 1.9 * scale);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(4.8);
-  doc.text(trimText(doc, teamName, width - 3), x + 1.5, y + 4.5);
+  doc.setFontSize(4.8 * scale);
+  doc.text(trimText(doc, teamName, width - 3 * scale), x + 1.5 * scale, y + 4.5 * scale);
 }
 
-function drawGoalStrikeList(doc: jsPDF, x: number, y: number, width: number) {
-  const teamWidth = (width - GOAL_GRID_GAP) / 2;
-
-  drawGoalGrid(doc, x, y, teamWidth, "T1");
-  drawGoalGrid(doc, x + teamWidth + GOAL_GRID_GAP, y, teamWidth, "T2");
+function formatRefereeCardTeamName(teamName: string) {
+  return formatTeamDisplayName(teamName).replace(/\s+\d+$/, "").trim();
 }
 
-function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: string) {
+function drawGoalStrikeList(doc: jsPDF, x: number, y: number, width: number, scale: number) {
+  const gap = GOAL_GRID_GAP * scale;
+  const teamWidth = (width - gap) / 2;
+
+  drawGoalGrid(doc, x, y, teamWidth, "T1", scale);
+  drawGoalGrid(doc, x + teamWidth + gap, y, teamWidth, "T2", scale);
+}
+
+function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: string, scale: number) {
   const columns = GOAL_GRID_COLUMNS;
   const cellWidth = width / columns;
-  const cellHeight = GOAL_GRID_CELL_HEIGHT;
+  const cellHeight = GOAL_GRID_CELL_HEIGHT * scale;
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(5.4);
-  doc.text(label, x, y - 1.1);
+  doc.setFontSize(5.4 * scale);
+  doc.text(label, x, y - 1.1 * scale);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.4);
+  doc.setFontSize(5.4 * scale);
   doc.setDrawColor(80);
-  doc.setLineWidth(0.14);
+  doc.setLineWidth(0.14 * scale);
 
   for (let goal = 1; goal <= 30; goal++) {
     const zeroBased = goal - 1;
@@ -425,29 +513,23 @@ function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: st
     const cellY = y + row * cellHeight;
 
     doc.rect(cellX, cellY, cellWidth, cellHeight);
-    doc.text(String(goal), cellX + cellWidth / 2, cellY + 6.2, { align: "center" });
+    doc.text(String(goal), cellX + cellWidth / 2, cellY + 6.2 * scale, { align: "center" });
   }
 }
 
-function addCutMarks(doc: jsPDF) {
+function addA6DoubleCutMarks(doc: jsPDF) {
   const pageTotal = doc.getNumberOfPages();
 
   for (let page = 1; page <= pageTotal; page++) {
     doc.setPage(page);
     doc.setDrawColor(180);
     doc.setLineWidth(0.1);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const cutX = pageWidth / 2;
 
-    for (let column = 1; column < CARD_COLUMNS; column++) {
-      const cutX = PAGE_MARGIN + column * CARD_WIDTH + (column - 0.5) * CARD_GAP;
-      doc.line(cutX, PAGE_MARGIN - 2, cutX, PAGE_MARGIN);
-      doc.line(cutX, PAGE_HEIGHT - PAGE_MARGIN, cutX, PAGE_HEIGHT - PAGE_MARGIN + 2);
-    }
-
-    for (let row = 1; row < CARD_ROWS; row++) {
-      const cutY = PAGE_MARGIN + row * CARD_HEIGHT + (row - 0.5) * CARD_GAP;
-      doc.line(PAGE_MARGIN - 2, cutY, PAGE_MARGIN, cutY);
-      doc.line(PAGE_WIDTH - PAGE_MARGIN, cutY, PAGE_WIDTH - PAGE_MARGIN + 2, cutY);
-    }
+    doc.line(cutX, A6_PAGE_MARGIN - 2, cutX, A6_PAGE_MARGIN);
+    doc.line(cutX, pageHeight - A6_PAGE_MARGIN, cutX, pageHeight - A6_PAGE_MARGIN + 2);
   }
 }
 
