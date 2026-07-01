@@ -46,13 +46,39 @@ test('schedule generation, publication and public visibility are preserved', asy
   const scheduleRoute = await source('app/api/spielplan/route.ts');
   const publicRoute = await source('app/api/spielplan/get/route.ts');
   const generator = await source('lib/spielplan-generator.ts');
+  const tournament = await source('lib/tournament.ts');
+  const schedulePanel = await source('app/admin/_components/schedule-panel.tsx');
+  const scheduleDragBoard = await source('app/admin/_components/schedule-drag-board.tsx');
 
   assert.match(scheduleRoute, /validActions = new Set\(\['deleteAll', 'generate', 'create', 'update', 'delete', 'publish', 'unpublish'\]\)/);
   assert.match(scheduleRoute, /generateSpielplan\(/);
   assert.match(scheduleRoute, /setSpielplanPublicationStatus\('published'\)/);
   assert.match(publicRoute, /settings\.spielplanStatus === 'published'/);
   assert.match(publicRoute, /hideInternalScoresForPublic/);
+  assert.match(publicRoute, /normalizeSpielplanZeitbloecke/);
+  assert.match(publicRoute, /spielplanZeitbloecke/);
   assert.match(generator, /feld: slot\.feld\.name/);
+  assert.match(generator, /requestStartsOnKickoffGrid/);
+  assert.match(generator, /restMinutes >= pauseMinutes/);
+  assert.match(generator, /getPublicNameRestScore/);
+  assert.doesNotMatch(generator, /publicNamesAvoidImmediateFollowUp/);
+  assert.match(generator, /normalizeClubName\(team1\.club\) === normalizeClubName\(team2\.club\)/);
+  assert.match(generator, /sameClub: false/);
+  assert.doesNotMatch(generator, /sameClubRequests/);
+  assert.match(generator, /normalizeSpielplanTimingProfil/);
+  assert.match(generator, /getDynamicSpielplanTimingProfiles/);
+  assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
+  assert.match(tournament, /capacityMinutes/);
+  assert.match(schedulePanel, /Spielzeit-Vorschlag auswählen/);
+  assert.match(schedulePanel, /dynamicTimingProfiles/);
+  assert.doesNotMatch(schedulePanel, /SPIELPLAN_TIMING_PROFILES/);
+  assert.match(scheduleDragBoard, /ScheduleTimeGrid/);
+  assert.match(scheduleDragBoard, /gridTemplateColumns/);
+  assert.match(scheduleDragBoard, /gridTemplateRows/);
+  assert.match(scheduleDragBoard, /timeSlots\.map/);
+  assert.match(scheduleDragBoard, /h-44 max-h-44/);
+  assert.match(scheduleDragBoard, /h-40 max-h-40/);
+  assert.match(scheduleDragBoard, /twoLineClampStyle/);
 });
 
 test('result saving and public score visibility remain guarded', async () => {
@@ -111,4 +137,33 @@ test('backup and restore are available through authenticated admin API and visib
   assert.match(settingsPanel, /Backups und Wiederherstellung/);
   assert.match(settingsPanel, /onDownloadBackup/);
   assert.match(settingsPanel, /onRestoreBackup/);
+});
+
+test('public team names are numbered only within the same visible category', async () => {
+  const tournament = await source('lib/tournament.ts');
+  const spielplanPage = await source('app/spielplan/page.tsx');
+  const ergebnissePage = await source('app/ergebnisse/page.tsx');
+  const pdfExport = await source('lib/pdf-export-simple.ts');
+  const xlsxExport = await source('lib/export-utils.ts');
+
+  assert.match(tournament, /createTeamDisplayNameMapFromGames/);
+  assert.match(tournament, /const category = formatScheduleCategoryLabel\(spiel\.kategorie\)/);
+  assert.match(tournament, /const groupKey = `\$\{baseKey\}:\$\{categoryKey\}`/);
+
+  for (const file of [spielplanPage, ergebnissePage, pdfExport, xlsxExport]) {
+    assert.match(file, /createTeamDisplayNameMapFromGames/);
+    assert.doesNotMatch(file, /createTeamDisplayNameMap\(.*flatMap\(\(spiel\) => \[spiel\.team1, spiel\.team2\]\)/s);
+  }
+});
+
+test('public schedule marks youth switches and pauses from time blocks', async () => {
+  const publicRoute = await source('app/api/spielplan/get/route.ts');
+  const spielplanPage = await source('app/spielplan/page.tsx');
+
+  assert.match(publicRoute, /datumKey: samstagDatum/);
+  assert.match(publicRoute, /datumKey: sonntagDatum/);
+  assert.match(spielplanPage, /buildTimelineItems/);
+  assert.match(spielplanPage, /Jugendwechsel/);
+  assert.match(spielplanPage, /PAUSE/);
+  assert.match(spielplanPage, /Wechsel zu/);
 });

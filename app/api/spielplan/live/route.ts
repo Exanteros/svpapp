@@ -3,6 +3,7 @@ import {
   deleteStoredLiveTimer,
   getDatabase,
   getAdminSettings,
+  getAllAnmeldungen,
   getStoredFeldEinstellungen,
   getStoredLiveTimers,
   saveStoredLiveTimer,
@@ -12,6 +13,8 @@ import { notifySpielplanChanged } from '@/lib/spielplan-events';
 import {
   areScoresPublicForDate,
   formatScheduleCategoryLabel,
+  getDynamicSpielplanTimingProfiles,
+  getSpielplanTimingProfile,
   getSpielzeitRegelForKategorie,
   resolveFeldEinstellungenForDate,
 } from '@/lib/tournament';
@@ -46,13 +49,24 @@ export async function GET(request: NextRequest) {
     `).all(today) as Spiel[];
 
     const feldEinstellungen = getStoredFeldEinstellungen();
+    const timingProfile = settings.spielzeitenAutomatisch !== false
+      ? getSpielplanTimingProfile(
+        settings.spielplanTimingProfil,
+        getDynamicSpielplanTimingProfiles({
+          settings,
+          feldEinstellungen,
+          spielplanZeitbloecke: settings.spielplanZeitbloecke,
+          anmeldungen: getAllAnmeldungen() as Array<{ teams?: Array<{ kategorie?: string | null; anzahl?: number | string | null }> }>,
+        })
+      )
+      : null;
 
     const scoresVisible = authResult.authenticated || areScoresPublicForDate(settings, today);
     const enhancedGames = allGames.map(spiel => {
       const feldInfo = feldEinstellungen.find(f => f.name === spiel.feld);
       const fieldForGame = feldInfo ? resolveFeldEinstellungenForDate(feldInfo, spiel.datum) : null;
       const categoryTiming = settings.spielzeitenAutomatisch !== false
-        ? getSpielzeitRegelForKategorie(spiel.kategorie)
+        ? getSpielzeitRegelForKategorie(spiel.kategorie, timingProfile)
         : null;
       const visibleSpiel = scoresVisible ? spiel : { ...spiel, ergebnis: null, tore_team1: null, tore_team2: null };
 

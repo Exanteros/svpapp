@@ -2,7 +2,7 @@
 
 import JSZip from 'jszip';
 
-import { createTeamDisplayNameMap, formatScheduleCategoryLabel, formatTeamDisplayName } from './tournament';
+import { createTeamDisplayNameMapFromGames, formatScheduleCategoryLabel, formatTeamDisplayName } from './tournament';
 
 export interface Team {
   id: string;
@@ -138,7 +138,7 @@ export function exportStatistikenCSV(statistiken: Statistiken, anmeldungen: Anme
 }
 
 export async function exportSpielplanXLSX(spiele: Spiel[], config: Pick<TurnierEinstellungen, 'turnierName'>) {
-  const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
+  const teamDisplayNames = createTeamDisplayNameMapFromGames(spiele);
   const rows = [
     ['Datum', 'Zeit', 'Feld', 'Kategorie', 'Team 1', 'Team 2', 'Schiedsrichter', 'Status', 'Ergebnis'],
     ...[...spiele]

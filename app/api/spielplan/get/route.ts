@@ -6,6 +6,7 @@ import {
   areScoresPublicForDate,
   formatScheduleCategoryLabel,
   hideInternalScoresForPublic,
+  normalizeSpielplanZeitbloecke,
   resolveTournamentScheduleSettings,
 } from '@/lib/tournament';
 
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
     const sonntagEndzeit = scheduleSettings.sonntagEndzeit;
     const samstagDatum = scheduleSettings.turnierStartDatum;
     const sonntagDatum = scheduleSettings.turnierEndDatum;
+    const spielplanZeitbloecke = normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, scheduleSettings);
     const spiele = (includeDraft ? rawSpiele : hideInternalScoresForPublic(rawSpiele, settings)).map((spiel) => ({
       ...spiel,
       kategorie: formatScheduleCategoryLabel(spiel.kategorie),
@@ -97,18 +99,21 @@ export async function GET(request: NextRequest) {
 
     const response = {
       samstag: {
+        datumKey: samstagDatum,
         datum: formatDatum(samstagDatum),
         zeit: `${samstagStartzeit} - ${samstagEndzeit} Uhr`,
         ...(includeDraft ? { toreSichtbar: areScoresPublicForDate(settings, samstagDatum) } : {}),
         spiele: samstag
       },
       sonntag: {
+        datumKey: sonntagDatum,
         datum: formatDatum(sonntagDatum),
         zeit: `${sonntagStartzeit} - ${sonntagEndzeit} Uhr`,
         ...(includeDraft ? { toreSichtbar: areScoresPublicForDate(settings, sonntagDatum) } : {}),
         spiele: sonntag
       },
       availableFields: availableFields.length > 0 ? availableFields : DEFAULT_FELD_EINSTELLUNGEN.map((feld) => feld.name),
+      spielplanZeitbloecke,
       spielplanStatus: settings.spielplanStatus,
       spielplanPublishedAt: settings.spielplanPublishedAt,
     };
@@ -132,16 +137,19 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       samstag: {
+        datumKey: scheduleSettings.turnierStartDatum,
         datum: formatFallbackDatum(scheduleSettings.turnierStartDatum),
         zeit: `${scheduleSettings.samstagStartzeit} - ${scheduleSettings.samstagEndzeit} Uhr`,
         spiele: []
       },
       sonntag: {
+        datumKey: scheduleSettings.turnierEndDatum,
         datum: formatFallbackDatum(scheduleSettings.turnierEndDatum),
         zeit: `${scheduleSettings.sonntagStartzeit} - ${scheduleSettings.sonntagEndzeit} Uhr`,
         spiele: []
       },
-      availableFields: DEFAULT_FELD_EINSTELLUNGEN.map((feld) => feld.name)
+      availableFields: DEFAULT_FELD_EINSTELLUNGEN.map((feld) => feld.name),
+      spielplanZeitbloecke: normalizeSpielplanZeitbloecke(undefined, scheduleSettings),
     }, { headers });
   }
 }

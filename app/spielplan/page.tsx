@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSpielplanLiveEvents } from "@/components/SpielplanLiveRefresh";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createTeamDisplayNameMap, formatScheduleCategoryLabel, formatTeamDisplayName } from "@/lib/tournament";
+import { createTeamDisplayNameMapFromGames, formatScheduleCategoryLabel, formatTeamDisplayName } from "@/lib/tournament";
 import { cn } from "@/lib/utils";
 
 interface Spiel {
@@ -38,21 +38,37 @@ interface Spiel {
 }
 
 interface SpielplanDay {
+  datumKey: string;
   datum: string;
   zeit: string;
   spiele: Spiel[];
+}
+
+interface SpielplanZeitblock {
+  id: string;
+  label: string;
+  datum: string;
+  startzeit: string;
+  endzeit: string;
+  kategorien: string[];
 }
 
 interface SpielplanData {
   samstag: SpielplanDay;
   sonntag: SpielplanDay;
   availableFields: string[];
+  spielplanZeitbloecke?: SpielplanZeitblock[];
   spielplanStatus?: string;
   spielplanPublishedAt?: string;
 }
 
 type DayKey = "samstag" | "sonntag";
 type GameVisualStatus = "geplant" | "nächstes" | "laufend" | "halbzeit" | "beendet";
+
+type TimelineItem =
+  | { type: "block"; key: string; minute: number; block: SpielplanZeitblock; isFirstBlock: boolean }
+  | { type: "pause"; key: string; minute: number; startzeit: string; endzeit: string; nextBlockLabel: string; duration: number }
+  | { type: "games"; key: string; minute: number; zeitSlot: string; spiele: Spiel[] };
 
 const dayLabels: Record<DayKey, string> = {
   samstag: "Tag 1",
@@ -186,6 +202,86 @@ function getAllGames(data: SpielplanData | null) {
   return [...data.samstag.spiele, ...data.sonntag.spiele];
 }
 
+function timeToMinutes(time: string) {
+  const [hour, minute] = time.split(":").map(Number);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return 0;
+  }
+
+  return hour * 60 + minute;
+}
+
+function formatTimeRange(startzeit: string, endzeit: string) {
+  return `${startzeit} - ${endzeit} Uhr`;
+}
+
+function getBlockTitle(block: SpielplanZeitblock) {
+  return block.label || block.kategorien.map(formatScheduleCategoryLabel).join(" / ") || "Zeitblock";
+}
+
+function getBlocksForDay(data: SpielplanData, day: SpielplanDay) {
+  return (data.spielplanZeitbloecke ?? [])
+    .filter((block) => block.datum === day.datumKey)
+    .sort((first, second) => timeToMinutes(first.startzeit) - timeToMinutes(second.startzeit));
+}
+
+function buildTimelineItems(
+  timeSlots: string[],
+  groupedSpiele: Record<string, Spiel[]>,
+  dayBlocks: SpielplanZeitblock[]
+): TimelineItem[] {
+  const items: TimelineItem[] = timeSlots.map((zeitSlot) => ({
+    type: "games",
+    key: `games-${zeitSlot}`,
+    minute: timeToMinutes(zeitSlot),
+    zeitSlot,
+    spiele: groupedSpiele[zeitSlot],
+  }));
+
+  dayBlocks.forEach((block, index) => {
+    const blockStart = timeToMinutes(block.startzeit);
+    const previousBlock = dayBlocks[index - 1];
+
+    if (previousBlock) {
+      const previousEnd = timeToMinutes(previousBlock.endzeit);
+      const duration = blockStart - previousEnd;
+
+      if (duration > 0) {
+        items.push({
+          type: "pause",
+          key: `pause-${previousBlock.id}-${block.id}`,
+          minute: previousEnd,
+          startzeit: previousBlock.endzeit,
+          endzeit: block.startzeit,
+          nextBlockLabel: getBlockTitle(block),
+          duration,
+        });
+      }
+    }
+
+    items.push({
+      type: "block",
+      key: `block-${block.id}`,
+      minute: blockStart,
+      block,
+      isFirstBlock: index === 0,
+    });
+  });
+
+  const typeOrder: Record<TimelineItem["type"], number> = {
+    pause: 0,
+    block: 1,
+    games: 2,
+  };
+
+  return items.sort((first, second) => (
+    first.minute - second.minute
+    || typeOrder[first.type] - typeOrder[second.type]
+    || first.key.localeCompare(second.key, "de")
+  ));
+}
+
 export default function SpielplanPage() {
   const [spielplanData, setSpielplanData] = useState<SpielplanData | null>(null);
   const [selectedField, setSelectedField] = useState("alle");
@@ -225,7 +321,7 @@ export default function SpielplanPage() {
 
   const allGames = useMemo(() => getAllGames(spielplanData), [spielplanData]);
   const teamDisplayNames = useMemo(
-    () => createTeamDisplayNameMap(allGames.flatMap((spiel) => [spiel.team1, spiel.team2])),
+    () => createTeamDisplayNameMapFromGames(allGames),
     [allGames]
   );
 
@@ -286,6 +382,8 @@ export default function SpielplanPage() {
     selectedField === "alle" ? currentDay.spiele : currentDay.spiele.filter((spiel) => spiel.feld === selectedField);
   const groupedSpiele = groupByTime(filteredSpiele);
   const timeSlots = Object.keys(groupedSpiele).sort();
+  const dayBlocks = getBlocksForDay(spielplanData, currentDay);
+  const timelineItems = buildTimelineItems(timeSlots, groupedSpiele, dayBlocks);
   const totalGames = allGames.length;
   const liveGames = allGames.filter((spiel) => ["laufend", "halbzeit"].includes(spiel.status)).length;
   const endedGames = allGames.filter((spiel) => spiel.status === "beendet").length;
@@ -421,16 +519,71 @@ export default function SpielplanPage() {
           </div>
         ) : (
           <div className="space-y-5">
-            {timeSlots.map((zeitSlot) => {
-              const spieleInSlot = groupedSpiele[zeitSlot];
+            {timelineItems.map((item) => {
+              if (item.type === "block") {
+                const title = getBlockTitle(item.block);
+                const label = item.isFirstBlock ? "Abschnitt" : "Jugendwechsel";
+
+                return (
+                  <section
+                    key={item.key}
+                    className="rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1] px-4 py-3 shadow-sm sm:px-5"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-normal text-[#6f7d48]">
+                          <CalendarDays className="size-3.5" />
+                          {label}
+                        </div>
+                        <div className="mt-1 text-lg font-semibold leading-tight text-[#3f4a26]">{title}</div>
+                      </div>
+                      <div className="inline-flex w-fit items-center gap-2 rounded-[8px] border border-[#d9dec8] bg-white px-3 py-2 text-sm font-medium text-[#4f5d2f]">
+                        <Clock className="size-4" />
+                        {formatTimeRange(item.block.startzeit, item.block.endzeit)}
+                      </div>
+                    </div>
+                  </section>
+                );
+              }
+
+              if (item.type === "pause") {
+                return (
+                  <section key={item.key} className="grid gap-3 md:grid-cols-[96px_minmax(0,1fr)]">
+                    <div className="md:pt-1">
+                      <div className="sticky top-4 inline-flex items-center gap-2 rounded-[8px] border border-[#d9dec8] bg-white px-3 py-2 shadow-sm md:flex-col md:items-start">
+                        <Pause className="size-4 text-[#4f5d2f]" />
+                        <div>
+                          <div className="font-semibold text-[#4f5d2f]">{item.startzeit}</div>
+                          <div className="text-xs text-muted-foreground">Pause</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[8px] border border-dashed border-[#cdd5bd] bg-white px-4 py-3 shadow-sm sm:px-5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-normal text-[#6f7d48]">PAUSE</div>
+                          <div className="mt-1 text-base font-semibold text-[#3f4a26]">Wechsel zu {item.nextBlockLabel}</div>
+                        </div>
+                        <div className="inline-flex w-fit items-center gap-2 rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] px-3 py-2 text-sm font-medium text-[#4f5d2f]">
+                          <Clock className="size-4" />
+                          {formatTimeRange(item.startzeit, item.endzeit)}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                );
+              }
+
+              const spieleInSlot = item.spiele;
 
               return (
-                <section key={zeitSlot} className="grid gap-3 md:grid-cols-[96px_minmax(0,1fr)]">
+                <section key={item.key} className="grid gap-3 md:grid-cols-[96px_minmax(0,1fr)]">
                   <div className="md:pt-1">
                     <div className="sticky top-4 inline-flex items-center gap-2 rounded-[8px] border border-[#d9dec8] bg-white px-3 py-2 shadow-sm md:flex-col md:items-start">
                       <Clock className="size-4 text-[#4f5d2f]" />
                       <div>
-                        <div className="font-semibold text-[#4f5d2f]">{zeitSlot}</div>
+                        <div className="font-semibold text-[#4f5d2f]">{item.zeitSlot}</div>
                         <div className="text-xs text-muted-foreground">Uhr</div>
                       </div>
                     </div>

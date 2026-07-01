@@ -9,6 +9,7 @@ import {
   getDefaultSpielplanZeitbloecke,
   normalizeFeldEinstellungen,
   normalizeSpielplanZeitbloecke,
+  normalizeSpielplanTimingProfil,
   resolveTournamentScheduleSettings,
   type FeldEinstellungen,
 } from './tournament';
@@ -1150,6 +1151,7 @@ export function getAdminSettings() {
     sonntagToreSichtbar: true,
     ergebnisTabellenAktiv: false,
     spielzeitenAutomatisch: true,
+    spielplanTimingProfil: 'standard',
     spielplanZeitbloecke: getDefaultSpielplanZeitbloecke(),
     anmeldungAktiv: true,
     spielplanStatus: 'draft' as SpielplanStatus,
@@ -1226,6 +1228,9 @@ export function getAdminSettings() {
       case 'spielzeiten_automatisch':
         result.spielzeitenAutomatisch = setting.value !== 'false';
         break;
+      case 'spielplan_timing_profil':
+        result.spielplanTimingProfil = normalizeSpielplanTimingProfil(setting.value);
+        break;
       case 'spielplan_zeitbloecke':
         try {
           rawSpielplanZeitbloecke = JSON.parse(setting.value);
@@ -1252,6 +1257,7 @@ export function getAdminSettings() {
     rawSpielplanZeitbloecke ?? result.spielplanZeitbloecke,
     resolveTournamentScheduleSettings(result)
   );
+  result.spielplanTimingProfil = normalizeSpielplanTimingProfil(result.spielplanTimingProfil);
 
   return result;
 }
@@ -1290,6 +1296,7 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('24', 'anmeldung_aktiv', settings.anmeldungAktiv === false ? 'false' : 'true');
     updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
     updateSetting.run('26', 'spielzeiten_automatisch', settings.spielzeitenAutomatisch === false ? 'false' : 'true');
+    updateSetting.run('28', 'spielplan_timing_profil', normalizeSpielplanTimingProfil(settings.spielplanTimingProfil));
     updateSetting.run(
       '27',
       'spielplan_zeitbloecke',

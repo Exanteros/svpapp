@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -36,6 +36,11 @@ interface TargetCell {
 }
 
 const ANNOUNCEMENT_OFFSET_MINUTES = 5;
+const twoLineClampStyle: CSSProperties = {
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+};
 
 export function ScheduleDragBoard({
   spiele,
@@ -59,6 +64,10 @@ export function ScheduleDragBoard({
   const fields = useMemo(
     () => getFieldsForDay(gamesForDay, feldEinstellungen, activeDate),
     [activeDate, feldEinstellungen, gamesForDay]
+  );
+  const timeSlots = useMemo(
+    () => getTimeSlotsForDay(gamesForDay, settings, activeDate),
+    [activeDate, gamesForDay, settings]
   );
   const gamesByCell = useMemo(() => {
     const result = new Map<string, Spiel[]>();
@@ -146,19 +155,14 @@ export function ScheduleDragBoard({
               </span>
             </div>
             <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {fields.map((field) => (
-                  <FieldLane
-                    key={field}
-                    field={field}
-                    games={gamesForDay.filter((spiel) => spiel.feld === field)}
-                    activeDate={activeDate}
-                    gamesByCell={gamesByCell}
-                    disabled={saving}
-                    pendingId={pendingId}
-                  />
-                ))}
-              </div>
+              <ScheduleTimeGrid
+                fields={fields}
+                timeSlots={timeSlots}
+                activeDate={activeDate}
+                gamesByCell={gamesByCell}
+                disabled={saving}
+                pendingId={pendingId}
+              />
             </DndContext>
           </>
         )}
@@ -167,79 +171,103 @@ export function ScheduleDragBoard({
   );
 }
 
-function FieldLane({
-  field,
-  games,
+function ScheduleTimeGrid({
+  fields,
+  timeSlots,
   activeDate,
   gamesByCell,
   disabled,
   pendingId,
 }: {
-  field: string;
-  games: Spiel[];
+  fields: string[];
+  timeSlots: string[];
   activeDate: string;
   gamesByCell: Map<string, Spiel[]>;
   disabled: boolean;
   pendingId: string | null;
 }) {
-  const times = unique(games.map((spiel) => spiel.zeit).filter(Boolean)).sort();
+  const columnCount = Math.max(fields.length, 1);
+  const gridTemplateColumns = `104px repeat(${columnCount}, minmax(220px, 1fr))`;
+  const gridTemplateRows = `44px repeat(${Math.max(timeSlots.length, 1)}, 176px)`;
+  const minWidth = 104 + columnCount * 240;
+
+  if (fields.length === 0) {
+    return (
+      <div className="rounded-[8px] border border-dashed bg-white p-6 text-center text-sm text-muted-foreground">
+        Keine aktiven Felder für diesen Tag.
+      </div>
+    );
+  }
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-[8px] border bg-[#f6f7f1]">
-      <div className="flex items-center justify-between gap-3 border-b bg-white px-3 py-2">
-        <div className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
-          <MapPin className="size-4 shrink-0 text-[#5e6d35]" />
-          <span className="min-w-0 break-words">{field}</span>
+    <div className="overflow-x-auto rounded-[8px] border border-[#d9dec8] bg-[#e1e4d8]">
+      <div
+        className="grid gap-px"
+        style={{ gridTemplateColumns, gridTemplateRows, minWidth }}
+      >
+        <div className="sticky left-0 z-20 flex h-11 items-center bg-white px-3 text-xs font-semibold uppercase tracking-normal text-[#4f5d2f]">
+          Anpfiff
         </div>
-        <Badge variant="outline" className="shrink-0 border-[#d9dec8] text-[#4f5d2f]">
-          {games.length} Spiele
-        </Badge>
-      </div>
-      <div className="grid gap-2 p-2">
-        {times.length === 0 ? (
-          <div className="rounded-[8px] border border-dashed bg-white p-4 text-sm text-muted-foreground">
-            Keine Spiele auf diesem Feld.
+        {fields.map((field) => (
+          <div key={field} className="flex h-11 items-center bg-white px-3">
+            <div className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
+              <MapPin className="size-4 shrink-0 text-[#5e6d35]" />
+              <span className="min-w-0 truncate">{field}</span>
+            </div>
           </div>
-        ) : times.map((time) => {
-        const id = createCellId(activeDate, time, field);
-        const games = gamesByCell.get(getCellKey(activeDate, time, field)) || [];
+        ))}
 
-        return (
-          <ScheduleDropCell key={id} id={id}>
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 font-semibold text-[#4f5d2f]">
+        {timeSlots.map((time) => (
+          <Fragment key={time}>
+            <div className="sticky left-0 z-10 h-44 overflow-hidden bg-[#f6f7f1] p-3">
+              <div className="inline-flex items-center gap-1 text-sm font-semibold text-[#4f5d2f]">
                 <Clock className="size-3.5" />
                 {time}
-              </span>
-              <span className="inline-flex items-center gap-1">
+              </div>
+              <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Megaphone className="size-3.5" />
-                Ansage {subtractMinutes(time, ANNOUNCEMENT_OFFSET_MINUTES)}
-              </span>
+                {subtractMinutes(time, ANNOUNCEMENT_OFFSET_MINUTES)}
+              </div>
             </div>
-            {games.map((spiel) => (
-                <ScheduleGameCard
-                  key={spiel.id}
-                  spiel={spiel}
-                  disabled={disabled}
-                  pending={pendingId === spiel.id}
-                />
-            ))}
-          </ScheduleDropCell>
-        );
-        })}
+            {fields.map((field) => {
+              const id = createCellId(activeDate, time, field);
+              const games = gamesByCell.get(getCellKey(activeDate, time, field)) || [];
+
+              return (
+                <ScheduleDropCell key={id} id={id} empty={games.length === 0}>
+                  {games.length > 0 ? (
+                    games.map((spiel) => (
+                      <ScheduleGameCard
+                        key={spiel.id}
+                        spiel={spiel}
+                        disabled={disabled}
+                        pending={pendingId === spiel.id}
+                      />
+                    ))
+                  ) : (
+                    <div className="flex h-full items-center justify-center rounded-[6px] text-xs text-muted-foreground/70">
+                      frei
+                    </div>
+                  )}
+                </ScheduleDropCell>
+              );
+            })}
+          </Fragment>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-function ScheduleDropCell({ id, children }: { id: string; children: ReactNode }) {
+function ScheduleDropCell({ id, children, empty = false }: { id: string; children: ReactNode; empty?: boolean }) {
   const { isOver, setNodeRef } = useDroppable({ id });
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "grid content-start gap-2 rounded-[8px] border border-dashed bg-[#fbfbf8] p-2 transition-colors",
+        "grid h-44 max-h-44 grid-rows-1 overflow-hidden border border-dashed p-2 transition-colors",
+        empty ? "border-[#e6e8de] bg-[#fbfbf8]" : "border-[#d9dec8] bg-white",
         isOver && "border-[#5e6d35] bg-[#eef1e5]"
       )}
     >
@@ -255,6 +283,8 @@ function ScheduleGameCard({ spiel, disabled, pending }: { spiel: Spiel; disabled
   });
   const style = {
     transform: CSS.Transform.toString(transform),
+    height: 160,
+    maxHeight: 160,
   };
 
   return (
@@ -264,23 +294,39 @@ function ScheduleGameCard({ spiel, disabled, pending }: { spiel: Spiel; disabled
       {...attributes}
       {...listeners}
       className={cn(
-        "touch-none rounded-[8px] border bg-white p-3 shadow-xs transition-shadow",
+        "flex h-40 max-h-40 touch-none flex-col overflow-hidden rounded-[8px] border bg-white p-3 shadow-xs transition-shadow",
         !disabled && "cursor-grab active:cursor-grabbing",
         isDragging && "opacity-60 shadow-md",
         pending && "opacity-60"
       )}
     >
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <Badge variant="outline" className="max-w-full whitespace-normal break-words border-[#d9dec8] text-[#4f5d2f]">
-          {spiel.kategorie}
+        <Badge
+          variant="outline"
+          className="block max-w-[calc(100%-24px)] truncate border-[#d9dec8] text-[#4f5d2f]"
+          title={spiel.kategorie}
+        >
+          <span className="block truncate">{spiel.kategorie}</span>
         </Badge>
         <GripVertical className="size-4 shrink-0 text-muted-foreground" />
       </div>
-      <p className="!mt-0 break-words text-sm font-semibold leading-5">{spiel.team1}</p>
-      <p className="!my-1 text-xs text-muted-foreground">gegen</p>
-      <p className="!mb-0 break-words text-sm font-semibold leading-5">{spiel.team2}</p>
+      <p
+        className="!mt-0 h-10 overflow-hidden break-words text-sm font-semibold leading-5"
+        style={twoLineClampStyle}
+        title={spiel.team1}
+      >
+        {spiel.team1}
+      </p>
+      <p className="!my-1 h-4 shrink-0 text-xs text-muted-foreground">gegen</p>
+      <p
+        className="!mb-0 h-10 overflow-hidden break-words text-sm font-semibold leading-5"
+        style={twoLineClampStyle}
+        title={spiel.team2}
+      >
+        {spiel.team2}
+      </p>
       {spiel.status !== "geplant" && (
-        <Badge variant="secondary" className="mt-3">
+        <Badge variant="secondary" className="mt-auto w-fit">
           {spiel.status}
         </Badge>
       )}

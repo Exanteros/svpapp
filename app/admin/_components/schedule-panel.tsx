@@ -11,16 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { getDynamicSpielplanTimingProfiles } from "@/lib/tournament";
 
 import { DangerZone } from "./danger-zone";
 import { formatDate } from "./format";
 import { ScheduleDragBoard } from "./schedule-drag-board";
-import type { FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanZeitblock, TurnierEinstellungen } from "./types";
+import type { Anmeldung, FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanZeitblock, TurnierEinstellungen } from "./types";
 import { TEAM_CATEGORIES } from "./types";
 
 interface SchedulePanelProps {
   settings: TurnierEinstellungen;
   feldEinstellungen: FeldEinstellungen[];
+  anmeldungen: Anmeldung[];
   spiele: Spiel[];
   saving: boolean;
   onFeldSettingsSave: (settings: FeldEinstellungen[]) => boolean | Promise<boolean>;
@@ -35,6 +37,7 @@ interface SchedulePanelProps {
 export function SchedulePanel({
   settings,
   feldEinstellungen,
+  anmeldungen,
   spiele,
   saving,
   onFeldSettingsSave,
@@ -59,6 +62,8 @@ export function SchedulePanel({
   const draftZeitbloeckeSignature = useMemo(() => JSON.stringify(draftZeitbloecke), [draftZeitbloecke]);
   const hasUnsavedZeitbloecke = draftZeitbloeckeSignature !== savedZeitbloeckeSignature;
   const autoSpielzeiten = settings.spielzeitenAutomatisch !== false;
+  const selectedTimingProfile = settings.spielplanTimingProfil || "standard";
+  const hasUnsavedGeneratorSetup = hasUnsavedFields || hasUnsavedZeitbloecke;
   const previewHref = settings.spielplanStatus === "published" ? "/spielplan" : "/spielplan?preview=1";
   const days = useMemo(
     () => [
@@ -75,6 +80,12 @@ export function SchedulePanel({
     ]
   );
   const daySignature = useMemo(() => days.map((day) => day.date).join("|"), [days]);
+  const dynamicTimingProfiles = useMemo(() => getDynamicSpielplanTimingProfiles({
+    settings,
+    feldEinstellungen: draftFields,
+    spielplanZeitbloecke: draftZeitbloecke,
+    anmeldungen,
+  }), [anmeldungen, draftFields, draftZeitbloecke, settings]);
 
   useEffect(() => {
     const nextFields = materializeFieldsForDays(feldEinstellungen, days);
@@ -690,17 +701,17 @@ export function SchedulePanel({
         <CardHeader className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <CardTitle className="text-lg">3. Generieren und prüfen</CardTitle>
-            <p className="!mt-1 text-sm text-muted-foreground">Der Algorithmus füllt die Turniertage mit den Excel-Spielzeiten und lässt Überhang-Spiele aus.</p>
+            <p className="!mt-1 text-sm text-muted-foreground">Der Algorithmus berechnet Spielzeiten aus Mannschaftsanzahl, Zeitblöcken und aktiven Feldern.</p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap">
             <Button
               onClick={() => onGenerate()}
-              disabled={saving || hasUnsavedFields}
+              disabled={saving || hasUnsavedGeneratorSetup}
               className="w-full bg-[#5e6d35] text-white hover:bg-[#4f5d2f] sm:w-auto"
-              title={hasUnsavedFields ? "Bitte zuerst die Feldeinstellungen speichern" : undefined}
+              title={hasUnsavedGeneratorSetup ? "Bitte zuerst Felder oder Zeitblöcke speichern" : undefined}
             >
               <Wand2 className="size-4" />
-              {hasUnsavedFields ? "Erst Felder speichern" : "Spielplan generieren"}
+              {hasUnsavedGeneratorSetup ? "Erst Setup speichern" : "Spielplan generieren"}
             </Button>
             <Button asChild variant="outline" className="w-full sm:w-auto">
               <a href={previewHref} target="_blank" rel="noreferrer">
@@ -711,6 +722,61 @@ export function SchedulePanel({
           </div>
         </CardHeader>
         <CardContent>
+          {autoSpielzeiten && (
+            <div className="mb-4 rounded-[8px] border border-[#d9dec8] bg-white p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold">Spielzeit-Vorschlag auswählen</h3>
+                  <p className="!mt-1 text-sm text-muted-foreground">
+                    Die drei Profile werden dynamisch aus den aktuellen Anmeldungen berechnet. Mehr Teams ergeben kürzere Spiele, weniger Teams längere Spiele.
+                  </p>
+                </div>
+                <Badge variant="outline" className="w-fit border-[#d9dec8] text-[#5e6d35]">
+                  gleiche Anpfiffzeiten
+                </Badge>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                {dynamicTimingProfiles.map((profile) => {
+                  const active = selectedTimingProfile === profile.id;
+
+                  return (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => {
+                        void onSettingsPatch({ spielplanTimingProfil: profile.id });
+                      }}
+                      className={[
+                        "rounded-[8px] border p-4 text-left transition",
+                        active
+                          ? "border-[#5e6d35] bg-[#f6f7f1] shadow-sm ring-2 ring-[#d9dec8]"
+                          : "border-[#e1e4d8] bg-[#fbfbf8] hover:border-[#cdd5bd]",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold">{profile.label}</span>
+                        {active && (
+                          <Badge className="bg-[#5e6d35] text-white">
+                            aktiv
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="!mt-2 text-xs leading-5 text-muted-foreground">{profile.description}</p>
+                      <div className="mt-3 grid gap-1 text-xs text-[#4f5d2f]">
+                        <span>Mini/E: {profile.miniE.spielzeit}+{profile.miniE.pausenzeit} Min</span>
+                        <span>D: {profile.d.spielzeit}+{profile.d.pausenzeit} Min</span>
+                        <span>C/B/A: {profile.cba.spielzeit}+{profile.cba.pausenzeit} Min</span>
+                      </div>
+                      <div className="mt-3 rounded-[6px] border border-[#e1e4d8] bg-white px-2 py-1.5 text-[11px] text-muted-foreground">
+                        Ziel: ca. {profile.targetGamesPerTeam} Spiele pro Mannschaft
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {spiele.length === 0 ? (
             <div className="rounded-[8px] border border-dashed p-8 text-center text-sm text-muted-foreground">
               Noch kein Spielplan vorhanden.

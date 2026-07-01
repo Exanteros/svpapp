@@ -571,6 +571,7 @@ export default function AdminPage() {
           <SchedulePanel
             settings={settings}
             feldEinstellungen={feldEinstellungen}
+            anmeldungen={anmeldungen}
             spiele={spiele}
             saving={saving}
             onFeldSettingsSave={handleFieldSettingsChange}

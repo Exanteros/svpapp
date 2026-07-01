@@ -70,38 +70,69 @@ export function formatScheduleCategoryLabel(category: string) {
 
 export type TeamDisplayNameMap = ReadonlyMap<string, string>;
 
+interface TeamDisplayNameEntry {
+  teamName: string;
+  category?: string | null;
+}
+
+interface TeamDisplayGame {
+  kategorie: string;
+  team1: string;
+  team2: string;
+}
+
 const TEAM_NUMBER_SUFFIX_PATTERN = /\s+(\d+)$/;
 const TEAM_CATEGORY_SUFFIX_PATTERN =
   /\s+(?:mini(?:\s*\d+)?(?:\s*\([^)]*\))?|[a-e]-jugend(?:\s+(?:weiblich|männlich|maennlich|mannlich|gemischt))?|(?:w|m|g|gm)[a-e])$/i;
 
-export function createTeamDisplayNameMap(teamNames: string[]) {
-  const normalizedTeamNames = Array.from(
-    new Set(teamNames.map(normalizeTeamDisplayInput).filter(Boolean))
-  );
-  const groupedByBaseKey = new Map<string, string[]>();
+export function createTeamDisplayNameMapFromGames(spiele: TeamDisplayGame[]) {
+  return createTeamDisplayNameMap(spiele.flatMap((spiel) => {
+    const category = formatScheduleCategoryLabel(spiel.kategorie);
 
-  normalizedTeamNames.forEach((teamName) => {
-    const baseKey = getTeamDisplayKey(teamName);
-    const group = groupedByBaseKey.get(baseKey) || [];
+    return [
+      { teamName: spiel.team1, category },
+      { teamName: spiel.team2, category },
+    ];
+  }));
+}
 
-    group.push(teamName);
-    groupedByBaseKey.set(baseKey, group);
+export function createTeamDisplayNameMap(teamNames: Array<string | TeamDisplayNameEntry>) {
+  const entriesByTeamName = new Map<string, TeamDisplayNameEntry>();
+
+  teamNames.forEach((entry) => {
+    const normalizedEntry = normalizeTeamDisplayEntry(entry);
+
+    if (normalizedEntry) {
+      entriesByTeamName.set(normalizedEntry.teamName, normalizedEntry);
+    }
   });
 
+  const entries = Array.from(entriesByTeamName.values());
+  const groupedByBaseAndCategory = new Map<string, TeamDisplayNameEntry[]>();
   const displayNames = new Map<string, string>();
 
-  groupedByBaseKey.forEach((teamNamesForBase) => {
-    const sortedTeamNames = [...teamNamesForBase].sort((a, b) =>
-      a.localeCompare(b, 'de-DE', { numeric: true, sensitivity: 'base' })
+  entries.forEach((entry) => {
+    const baseKey = getTeamDisplayKey(entry.teamName);
+    const categoryKey = getTeamDisplayCategoryKey(entry);
+    const groupKey = `${baseKey}:${categoryKey}`;
+    const group = groupedByBaseAndCategory.get(groupKey) || [];
+
+    group.push(entry);
+    groupedByBaseAndCategory.set(groupKey, group);
+  });
+
+  groupedByBaseAndCategory.forEach((entriesForBaseAndCategory) => {
+    const sortedEntries = [...entriesForBaseAndCategory].sort((a, b) =>
+      a.teamName.localeCompare(b.teamName, 'de-DE', { numeric: true, sensitivity: 'base' })
     );
 
-    sortedTeamNames.forEach((teamName, index) => {
-      const baseName = getTeamDisplayBaseName(teamName);
-      const displayName = sortedTeamNames.length > 1
+    sortedEntries.forEach((entry, index) => {
+      const baseName = getTeamDisplayBaseName(entry.teamName);
+      const displayName = sortedEntries.length > 1
         ? `${baseName} ${index + 1}`
         : baseName;
 
-      displayNames.set(teamName, displayName);
+      displayNames.set(entry.teamName, displayName);
     });
   });
 
@@ -130,6 +161,39 @@ export function getTeamDisplayKey(teamName: string) {
 
 function normalizeTeamDisplayInput(value: string) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTeamDisplayEntry(entry: string | TeamDisplayNameEntry) {
+  if (typeof entry === 'string') {
+    const teamName = normalizeTeamDisplayInput(entry);
+
+    return teamName ? { teamName } : null;
+  }
+
+  const teamName = normalizeTeamDisplayInput(entry.teamName);
+
+  if (!teamName) {
+    return null;
+  }
+
+  return {
+    teamName,
+    category: normalizeTeamDisplayInput(entry.category || ''),
+  };
+}
+
+function getTeamDisplayCategoryKey(entry: TeamDisplayNameEntry) {
+  const category = normalizeTeamDisplayInput(entry.category || '');
+
+  return normalizeTeamDisplayKey(category || getTeamDisplayCategoryName(entry.teamName));
+}
+
+function getTeamDisplayCategoryName(teamName: string) {
+  const normalizedName = normalizeTeamDisplayInput(teamName);
+  const nameWithoutNumber = normalizedName.replace(TEAM_NUMBER_SUFFIX_PATTERN, '').trim();
+  const categoryMatch = nameWithoutNumber.match(TEAM_CATEGORY_SUFFIX_PATTERN);
+
+  return categoryMatch?.[0]?.trim() || '';
 }
 
 function normalizeTeamDisplayKey(value: string) {
@@ -168,37 +232,322 @@ export interface FeldTagesEinstellungen {
   zweiHalbzeiten: boolean;
 }
 
-export function getSpielzeitRegelForKategorie(categoryName: string): FeldTagesEinstellungen {
+export type SpielplanTimingProfil = 'kompakt' | 'standard' | 'lang';
+export type SpielplanTimingGruppe = 'miniE' | 'd' | 'cba';
+
+export interface SpielplanTimingProfile {
+  id: SpielplanTimingProfil;
+  label: string;
+  description: string;
+  targetGamesPerTeam: number;
+  teamCounts: Record<SpielplanTimingGruppe, number>;
+  miniE: FeldTagesEinstellungen;
+  d: FeldTagesEinstellungen;
+  cba: FeldTagesEinstellungen;
+}
+
+export interface SpielplanTimingProfileContext {
+  settings?: PartialTournamentScheduleSettings;
+  feldEinstellungen?: unknown;
+  spielplanZeitbloecke?: unknown;
+  anmeldungen?: Array<{
+    teams?: Array<{
+      kategorie?: string | null;
+      anzahl?: number | string | null;
+    }>;
+  }>;
+}
+
+const SPIELPLAN_TIMING_PROFILE_DEFINITIONS: Array<{
+  id: SpielplanTimingProfil;
+  label: string;
+  description: string;
+  targetGamesPerTeam: number;
+}> = [
+  {
+    id: 'kompakt',
+    label: 'Viele Spiele',
+    description: 'Kürzere Spiele, mehr mögliche Runden pro Mannschaft.',
+    targetGamesPerTeam: 8,
+  },
+  {
+    id: 'standard',
+    label: 'Normal',
+    description: 'Ausgewogener Vorschlag aus Spieldauer und Rundenanzahl.',
+    targetGamesPerTeam: 6,
+  },
+  {
+    id: 'lang',
+    label: 'Lange Spielzeit',
+    description: 'Längere Spiele, dafür weniger mögliche Runden.',
+    targetGamesPerTeam: 4,
+  },
+];
+
+const DEFAULT_TIMING_TEAM_COUNTS: Record<SpielplanTimingGruppe, number> = {
+  miniE: 0,
+  d: 0,
+  cba: 0,
+};
+
+const FALLBACK_TIMING_MINUTES: Record<SpielplanTimingProfil, Record<SpielplanTimingGruppe, number>> = {
+  kompakt: { miniE: 6, d: 9, cba: 12 },
+  standard: { miniE: 7, d: 10, cba: 13 },
+  lang: { miniE: 8, d: 11, cba: 14 },
+};
+
+const DYNAMIC_TIMING_LIMITS: Record<SpielplanTimingGruppe, { min: number; max: number }> = {
+  miniE: { min: 5, max: 12 },
+  d: { min: 7, max: 15 },
+  cba: { min: 9, max: 18 },
+};
+
+export const SPIELPLAN_TIMING_PROFILES = createFallbackSpielplanTimingProfiles();
+
+export function normalizeSpielplanTimingProfil(value: unknown): SpielplanTimingProfil {
+  return SPIELPLAN_TIMING_PROFILE_DEFINITIONS.some((profile) => profile.id === value)
+    ? value as SpielplanTimingProfil
+    : 'standard';
+}
+
+export function getDynamicSpielplanTimingProfiles(context: SpielplanTimingProfileContext = {}): SpielplanTimingProfile[] {
+  const settings = resolveTournamentScheduleSettings(context.settings || {});
+  const zeitbloecke = normalizeSpielplanZeitbloecke(context.spielplanZeitbloecke, settings);
+  const fields = normalizeFeldEinstellungen(context.feldEinstellungen ?? DEFAULT_FELD_EINSTELLUNGEN);
+  const teamCounts = countTeamsByTimingGroup(context.anmeldungen || []);
+  const capacityMinutes = getTimingGroupCapacityMinutes(settings, zeitbloecke, fields);
+
+  return SPIELPLAN_TIMING_PROFILE_DEFINITIONS.map((definition) => {
+    const timings = {
+      miniE: createSpielzeitRegel(calculateDynamicSpielzeit('miniE', definition.id, definition.targetGamesPerTeam, teamCounts, capacityMinutes)),
+      d: createSpielzeitRegel(calculateDynamicSpielzeit('d', definition.id, definition.targetGamesPerTeam, teamCounts, capacityMinutes)),
+      cba: createSpielzeitRegel(calculateDynamicSpielzeit('cba', definition.id, definition.targetGamesPerTeam, teamCounts, capacityMinutes)),
+    };
+    const totalTeams = teamCounts.miniE + teamCounts.d + teamCounts.cba;
+
+    return {
+      ...definition,
+      description: totalTeams > 0
+        ? `${definition.description} Berechnet aus ${totalTeams} Team${totalTeams === 1 ? '' : 's'}.`
+        : definition.description,
+      teamCounts,
+      ...timings,
+    };
+  });
+}
+
+export function getSpielplanTimingProfile(
+  profileId: unknown,
+  profiles: SpielplanTimingProfile[] = SPIELPLAN_TIMING_PROFILES
+): SpielplanTimingProfile {
+  if (isSpielplanTimingProfile(profileId)) {
+    return profileId;
+  }
+
+  const normalizedProfile = normalizeSpielplanTimingProfil(profileId);
+
+  return profiles.find((profile) => profile.id === normalizedProfile)
+    || profiles.find((profile) => profile.id === 'standard')
+    || SPIELPLAN_TIMING_PROFILES[1];
+}
+
+export function getSpielzeitRegelForKategorie(
+  categoryName: string,
+  profileId: unknown = 'standard',
+  profiles?: SpielplanTimingProfile[]
+): FeldTagesEinstellungen {
+  const group = getSpielplanTimingGruppeForKategorie(categoryName);
+  const profile = getSpielplanTimingProfile(profileId, profiles);
+
+  if (group === 'miniE') {
+    return profile.miniE;
+  }
+
+  if (group === 'd') {
+    return profile.d;
+  }
+
+  return profile.cba;
+}
+
+export function getSpielplanTimingGruppeForKategorie(categoryName: string): SpielplanTimingGruppe {
   const normalized = normalizeSpielzeitKategorie(categoryName);
 
   if (normalized.startsWith('mini') || normalized.startsWith('ejugend')) {
-    return createSpielzeitRegel(7);
+    return 'miniE';
   }
 
   if (normalized.startsWith('djugend')) {
-    return createSpielzeitRegel(10);
+    return 'd';
   }
 
-  return createSpielzeitRegel(13);
+  return 'cba';
 }
 
-function createSpielzeitRegel(spielzeit: number): FeldTagesEinstellungen {
+function createFallbackSpielplanTimingProfiles(): SpielplanTimingProfile[] {
+  return SPIELPLAN_TIMING_PROFILE_DEFINITIONS.map((definition) => ({
+    ...definition,
+    teamCounts: { ...DEFAULT_TIMING_TEAM_COUNTS },
+    miniE: createSpielzeitRegel(FALLBACK_TIMING_MINUTES[definition.id].miniE),
+    d: createSpielzeitRegel(FALLBACK_TIMING_MINUTES[definition.id].d),
+    cba: createSpielzeitRegel(FALLBACK_TIMING_MINUTES[definition.id].cba),
+  }));
+}
+
+function isSpielplanTimingProfile(value: unknown): value is SpielplanTimingProfile {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<SpielplanTimingProfile>;
+
+  return Boolean(candidate.id && candidate.miniE && candidate.d && candidate.cba);
+}
+
+function countTeamsByTimingGroup(anmeldungen: NonNullable<SpielplanTimingProfileContext['anmeldungen']>) {
+  return anmeldungen.reduce<Record<SpielplanTimingGruppe, number>>((counts, anmeldung) => {
+    for (const team of anmeldung.teams || []) {
+      const teamCount = Math.max(0, Math.floor(Number(team.anzahl || 0)));
+
+      if (!team.kategorie || teamCount === 0) {
+        continue;
+      }
+
+      counts[getSpielplanTimingGruppeForKategorie(team.kategorie)] += teamCount;
+    }
+
+    return counts;
+  }, { ...DEFAULT_TIMING_TEAM_COUNTS });
+}
+
+function getTimingGroupCapacityMinutes(
+  settings: TournamentScheduleSettings,
+  zeitbloecke: SpielplanZeitblock[],
+  fields: FeldEinstellungen[]
+) {
+  const capacity: Record<SpielplanTimingGruppe, number> = { ...DEFAULT_TIMING_TEAM_COUNTS };
+
+  for (const block of zeitbloecke) {
+    const blockDuration = Math.max(0, parseSpielplanTime(block.endzeit) - parseSpielplanTime(block.startzeit));
+
+    if (blockDuration <= 0) {
+      continue;
+    }
+
+    const groupsInBlock = Array.from(new Set(block.kategorien.map(getSpielplanTimingGruppeForKategorie)));
+
+    for (const group of groupsInBlock) {
+      const activeFieldCount = fields.filter((field) => fieldCanHostTimingGroup(field, block.datum, group)).length;
+      const fallbackFieldCount = fields.filter((field) => fieldActiveOnDate(field, block.datum)).length;
+      const fieldCount = activeFieldCount || fallbackFieldCount || 1;
+
+      capacity[group] += blockDuration * fieldCount;
+    }
+  }
+
+  return {
+    miniE: capacity.miniE || getFallbackDayCapacity(settings.samstagStartzeit, settings.samstagEndzeit, fields, settings.turnierStartDatum),
+    d: capacity.d || getFallbackDayCapacity(settings.sonntagStartzeit, settings.sonntagEndzeit, fields, settings.turnierEndDatum),
+    cba: capacity.cba || getFallbackDayCapacity(settings.sonntagStartzeit, settings.sonntagEndzeit, fields, settings.turnierEndDatum),
+  };
+}
+
+function calculateDynamicSpielzeit(
+  group: SpielplanTimingGruppe,
+  profileId: SpielplanTimingProfil,
+  targetGamesPerTeam: number,
+  teamCounts: Record<SpielplanTimingGruppe, number>,
+  capacityMinutes: Record<SpielplanTimingGruppe, number>
+) {
+  const teamCount = teamCounts[group];
+  const capacity = capacityMinutes[group];
+  const fallback = FALLBACK_TIMING_MINUTES[profileId][group];
+
+  if (teamCount < 2 || capacity <= 0) {
+    return fallback;
+  }
+
+  const targetGames = Math.max(1, Math.ceil((teamCount * targetGamesPerTeam) / 2));
+  const slotDuration = Math.floor(capacity / targetGames);
+  const calculatedSpielzeit = slotDuration - 2;
+  const limits = DYNAMIC_TIMING_LIMITS[group];
+
+  return clampInteger(calculatedSpielzeit, limits.min, limits.max);
+}
+
+function getFallbackDayCapacity(startzeit: string, endzeit: string, fields: FeldEinstellungen[], datum: string) {
+  const duration = Math.max(0, parseSpielplanTime(endzeit) - parseSpielplanTime(startzeit));
+  const activeFieldCount = fields.filter((field) => fieldActiveOnDate(field, datum)).length || fields.length || 1;
+
+  return duration * activeFieldCount;
+}
+
+function fieldCanHostTimingGroup(feld: FeldEinstellungen, datum: string, group: SpielplanTimingGruppe) {
+  if (!fieldActiveOnDate(feld, datum)) {
+    return false;
+  }
+
+  const allowedForDay = feld.erlaubteJahrgaengeProTag?.[datum];
+  const allowedCategories = allowedForDay && allowedForDay.length > 0
+    ? allowedForDay
+    : feld.erlaubteJahrgaenge || [];
+
+  if (allowedCategories.length === 0) {
+    return true;
+  }
+
+  return allowedCategories.some((category) => getSpielplanTimingGruppeForKategorie(category) === group);
+}
+
+function fieldActiveOnDate(feld: FeldEinstellungen, datum: string) {
+  return feld.aktiveTage?.[datum] !== false;
+}
+
+function createSpielzeitRegel(spielzeit: number, pausenzeit = 2): FeldTagesEinstellungen {
   return {
     spielzeit,
-    pausenzeit: 2,
+    pausenzeit,
     halbzeitpause: 0,
     zweiHalbzeiten: false,
   };
 }
 
 function normalizeSpielzeitKategorie(value: string) {
-  return value
+  const normalized = value
     .replace(/\([^)]*\)/g, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ß/g, 'ss')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+  const shortCategoryMatch = normalized.match(/^(?:w|m|g|gm)?([abcde])$/);
+
+  return shortCategoryMatch ? `${shortCategoryMatch[1]}jugend` : normalized;
+}
+
+function parseSpielplanTime(value: string, fallback = 0) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return fallback;
+  }
+
+  return hours * 60 + minutes;
+}
+
+function clampInteger(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
 export interface FeldEinstellungen extends FeldTagesEinstellungen {
@@ -217,6 +566,7 @@ export interface TournamentScheduleSettings {
   samstagEndzeit: string;
   sonntagStartzeit: string;
   sonntagEndzeit: string;
+  spielplanTimingProfil: SpielplanTimingProfil;
 }
 
 export interface SpielplanZeitblock {
@@ -249,6 +599,7 @@ export const DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS: TournamentScheduleSettings = 
   samstagEndzeit: TOURNAMENT_DEFAULTS.saturdayEndTime,
   sonntagStartzeit: TOURNAMENT_DEFAULTS.sundayStartTime,
   sonntagEndzeit: TOURNAMENT_DEFAULTS.sundayEndTime,
+  spielplanTimingProfil: 'standard',
 };
 
 export function getDefaultSpielplanZeitbloecke(
@@ -370,6 +721,7 @@ export function resolveTournamentScheduleSettings(
     samstagEndzeit: settings.samstagEndzeit || DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.samstagEndzeit,
     sonntagStartzeit: settings.sonntagStartzeit || DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagStartzeit,
     sonntagEndzeit: settings.sonntagEndzeit || DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagEndzeit,
+    spielplanTimingProfil: normalizeSpielplanTimingProfil(settings.spielplanTimingProfil),
   };
 }
 

@@ -3,7 +3,7 @@
 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { createTeamDisplayNameMap, formatScheduleCategoryLabel, formatTeamDisplayName } from './tournament';
+import { createTeamDisplayNameMapFromGames, formatScheduleCategoryLabel, formatTeamDisplayName } from './tournament';
 
 export interface Spiel {
   id: string;
@@ -30,7 +30,7 @@ export function exportSpielplanCSV(spiele: Spiel[], config: TurnierConfig) {
   console.log('📊 Exportiere Spielplan als CSV...');
   
   try {
-    const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
+    const teamDisplayNames = createTeamDisplayNameMapFromGames(spiele);
     // CSV-Header
     const headers = ['Datum', 'Zeit', 'Feld', 'Kategorie', 'Team 1', 'Team 2', 'Status', 'Ergebnis'];
     
@@ -127,7 +127,7 @@ function createSpielplanPdf(spiele: Spiel[], config: TurnierConfig) {
   const spieleNachTagUndFeld = groupGamesByDayAndField(spiele);
   const tage = Object.keys(spieleNachTagUndFeld).sort(sortDates);
   const fieldColors = createFieldColorMap(spiele);
-  const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
+  const teamDisplayNames = createTeamDisplayNameMapFromGames(spiele);
 
   if (tage.length === 0) {
     drawEmptySpielplanPage(doc, config);

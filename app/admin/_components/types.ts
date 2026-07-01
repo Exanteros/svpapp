@@ -104,6 +104,7 @@ export interface TurnierEinstellungen {
   sonntagToreSichtbar: boolean;
   ergebnisTabellenAktiv: boolean;
   spielzeitenAutomatisch: boolean;
+  spielplanTimingProfil: "kompakt" | "standard" | "lang";
   spielplanZeitbloecke: SpielplanZeitblock[];
   spielplanStatus: SpielplanStatus;
   spielplanPublishedAt?: string | null;
@@ -224,6 +225,7 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   sonntagToreSichtbar: true,
   ergebnisTabellenAktiv: false,
   spielzeitenAutomatisch: true,
+  spielplanTimingProfil: "standard",
   spielplanZeitbloecke: [
     {
       id: "samstag-mini-e",

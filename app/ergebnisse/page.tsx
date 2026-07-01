@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { SpielplanLiveRefresh } from "@/components/SpielplanLiveRefresh";
 import {
   areScoresPublicForDate,
-  createTeamDisplayNameMap,
+  createTeamDisplayNameMapFromGames,
   formatScheduleCategoryLabel,
   formatTeamDisplayName,
 } from "@/lib/tournament";
@@ -100,7 +100,7 @@ function normalizeResults(spiele: RawSpiel[], settings: Record<string, unknown>)
 
     return result;
   }, []);
-  const teamDisplayNames = createTeamDisplayNameMap(spiele.flatMap((spiel) => [spiel.team1, spiel.team2]));
+  const teamDisplayNames = createTeamDisplayNameMapFromGames(spiele);
 
   return visibleResults.map<ErgebnisSpiel>((spiel) => ({
     ...spiel,

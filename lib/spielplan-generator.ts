@@ -2,15 +2,20 @@ import {
   DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS,
   TEAM_CATEGORIES,
   formatTeamDisplayName,
+  getDynamicSpielplanTimingProfiles,
+  getSpielplanTimingProfile,
   getTeamDisplayKey,
   getSpielzeitRegelForKategorie,
   normalizeFeldEinstellungen,
   normalizeSpielplanZeitbloecke,
+  normalizeSpielplanTimingProfil,
   resolveFeldEinstellungenForDate,
   resolveTournamentScheduleSettings,
   type FeldEinstellungen,
   type FeldTagesEinstellungen,
   type PartialTournamentScheduleSettings,
+  type SpielplanTimingProfile,
+  type SpielplanTimingProfil,
   type SpielplanZeitblock,
   type TournamentScheduleSettings,
 } from './tournament';
@@ -46,6 +51,7 @@ interface TeamEntry {
 interface GeneratorSettings extends PartialTournamentScheduleSettings {
   anzahlFelder?: number;
   spielzeitenAutomatisch?: boolean;
+  spielplanTimingProfil?: SpielplanTimingProfil;
   spielplanZeitbloecke?: SpielplanZeitblock[];
 }
 
@@ -71,6 +77,7 @@ interface ScheduleSlot {
   datum: string;
   zeit: string;
   startMinutes: number;
+  dayStartMinutes: number;
   dayEndMinutes: number;
   feld: FeldEinstellungen;
   used: boolean;
@@ -148,6 +155,7 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
     ...params.settings,
   };
   const settings = resolveTournamentScheduleSettings(mergedSettings);
+  const timingProfilId = normalizeSpielplanTimingProfil(mergedSettings.spielplanTimingProfil);
   const zeitbloecke = normalizeSpielplanZeitbloecke(mergedSettings.spielplanZeitbloecke, settings);
   const normalizedFields = normalizeFeldEinstellungen(params.feldEinstellungen ?? getStoredFeldEinstellungen());
   const fieldLimit = params.feldEinstellungen
@@ -158,15 +166,17 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
     settings
   );
   const anmeldungen = getAllAnmeldungen() as AnmeldungRow[];
+  const timingProfil = getGeneratorTimingProfile(anmeldungen, settings, timingProfilId, zeitbloecke, fieldSettings);
   const autoSpielzeiten = mergedSettings.spielzeitenAutomatisch !== false;
   const requests = interleaveRequests(createGameRequests(anmeldungen, settings, {
     useCategoryTimings: autoSpielzeiten,
+    timingProfil,
     zeitbloecke,
   }));
   const slots = createScheduleSlots(fieldSettings, settings);
   const plannedGames = assignRefereesToGames(assignGamesToSlots(requests, slots, {
     allowUnplanned: autoSpielzeiten,
-  }), anmeldungen);
+  }), anmeldungen, timingProfil);
 
   if (params.replaceExisting) {
     const createdGames = [];
@@ -202,6 +212,7 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
     ...params.settings,
   };
   const settings = resolveTournamentScheduleSettings(mergedSettings);
+  const timingProfilId = normalizeSpielplanTimingProfil(mergedSettings.spielplanTimingProfil);
   const zeitbloecke = normalizeSpielplanZeitbloecke(mergedSettings.spielplanZeitbloecke, settings);
   const normalizedFields = normalizeFeldEinstellungen(params.feldEinstellungen ?? getStoredFeldEinstellungen());
   const fieldLimit = params.feldEinstellungen
@@ -212,8 +223,10 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
     settings
   ));
   const anmeldungen = getAllAnmeldungen() as AnmeldungRow[];
+  const timingProfil = getGeneratorTimingProfile(anmeldungen, settings, timingProfilId, zeitbloecke, optimizedFields);
   const requests = interleaveRequests(createGameRequests(anmeldungen, settings, {
     useCategoryTimings: true,
+    timingProfil,
     zeitbloecke,
   }));
   const days = [settings.turnierStartDatum, settings.turnierEndDatum];
@@ -233,7 +246,7 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
 
     const slots = createScheduleSlots(optimizedFields, settings).filter((slot) => slot.datum === datum);
     const result = assignGamesToSlotsResult(dayRequests, slots);
-    const summaryTiming = getDaySummaryTiming(datum, settings);
+    const summaryTiming = getDaySummaryTiming(datum, settings, timingProfil);
 
     optimierung.push({
       datum,
@@ -243,7 +256,7 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
       ausgelasseneSpiele: result.unplannedRequests.length,
       aktiveFelder: activeFields.length,
       slots: result.plannedGames.length,
-      regelText: getDayTimingRuleText(datum, zeitbloecke),
+      regelText: getDayTimingRuleText(datum, zeitbloecke, timingProfil),
     });
   }
 
@@ -251,6 +264,23 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
     feldEinstellungen: optimizedFields,
     optimierung,
   };
+}
+
+function getGeneratorTimingProfile(
+  anmeldungen: AnmeldungRow[],
+  settings: TournamentScheduleSettings,
+  timingProfilId: SpielplanTimingProfil,
+  zeitbloecke: SpielplanZeitblock[],
+  feldEinstellungen: FeldEinstellungen[]
+) {
+  const dynamicProfiles = getDynamicSpielplanTimingProfiles({
+    settings,
+    feldEinstellungen,
+    spielplanZeitbloecke: zeitbloecke,
+    anmeldungen,
+  });
+
+  return getSpielplanTimingProfile(timingProfilId, dynamicProfiles);
 }
 
 function createAutoSpielzeitMessage(datum: string, spiele: number, aktiveFelder: number) {
@@ -283,7 +313,11 @@ function cloneStringArrayRecord(record: Record<string, string[]> | undefined) {
 function createGameRequests(
   anmeldungen: AnmeldungRow[],
   settings: TournamentScheduleSettings,
-  options: { useCategoryTimings?: boolean; zeitbloecke?: SpielplanZeitblock[] } = {}
+  options: {
+    useCategoryTimings?: boolean;
+    timingProfil?: SpielplanTimingProfile;
+    zeitbloecke?: SpielplanZeitblock[];
+  } = {}
 ) {
   const teamsByCategory = groupTeamsByCategory(anmeldungen);
   const requests: GameRequest[] = [];
@@ -302,7 +336,7 @@ function createGameRequests(
         baseKategorie: kategorie,
         kategorie: createScheduleCategoryLabel(kategorie, niveau),
         fieldGroup: `${datum}:${kategorie}:${niveau}`,
-        timing: options.useCategoryTimings ? getSpielzeitRegelForKategorie(kategorie) : undefined,
+        timing: options.useCategoryTimings ? getSpielzeitRegelForKategorie(kategorie, options.timingProfil) : undefined,
         timeWindow: getTimeWindowForCategory(kategorie, datum, options.zeitbloecke || []),
       };
       const categoryRequests = createRoundRobinRequests(sortedTeams, requestBase);
@@ -425,26 +459,14 @@ function createRoundRobinRequests(
   teams: TeamEntry[],
   requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow'>
 ) {
-  const externalRequests: GameRequest[] = [];
-  const sameClubRequests: GameRequest[] = [];
-
-  for (const request of createPairingCandidates(teams, requestBase)) {
-    if (request.sameClub) {
-      sameClubRequests.push(request);
-    } else {
-      externalRequests.push(request);
-    }
-  }
-
-  return [...externalRequests, ...sameClubRequests];
+  return createPairingCandidates(teams, requestBase);
 }
 
 function createPairingCandidates(
   teams: TeamEntry[],
   requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow'>
 ) {
-  const externalRequests: GameRequest[] = [];
-  const sameClubRequests: GameRequest[] = [];
+  const requests: GameRequest[] = [];
 
   createRoundRobinRounds(teams).forEach((round, roundIndex) => {
     const roundRequests = round
@@ -458,30 +480,22 @@ function createPairingCandidates(
           team1: team1.name,
           team2: team2.name,
           roundIndex,
-          sameClub: normalizeClubName(team1.club) === normalizeClubName(team2.club),
+          sameClub: false,
         }];
       })
-      .sort((a, b) => {
-        if (a.sameClub !== b.sameClub) {
-          return a.sameClub ? 1 : -1;
-        }
+      .sort((a, b) => `${a.team1}:${a.team2}`.localeCompare(`${b.team1}:${b.team2}`, 'de'));
 
-        return `${a.team1}:${a.team2}`.localeCompare(`${b.team1}:${b.team2}`, 'de');
-      });
-
-    for (const request of roundRequests) {
-      if (request.sameClub) {
-        sameClubRequests.push(request);
-      } else {
-        externalRequests.push(request);
-      }
-    }
+    requests.push(...roundRequests);
   });
 
-  return [...externalRequests, ...sameClubRequests];
+  return requests;
 }
 
 function teamsCanMeet(team1: TeamEntry, team2: TeamEntry) {
+  if (normalizeClubName(team1.club) === normalizeClubName(team2.club)) {
+    return false;
+  }
+
   if (!team1.eJugendGender || !team2.eJugendGender) {
     return true;
   }
@@ -589,6 +603,7 @@ function createScheduleSlots(fields: FeldEinstellungen[], settings: TournamentSc
           datum: day.datum,
           zeit: formatMinutes(startMinutes),
           startMinutes,
+          dayStartMinutes: day.start,
           dayEndMinutes: day.end,
           feld: fieldForDay,
           used: false,
@@ -695,7 +710,11 @@ function assignGamesToSlotsResult(requests: GameRequest[], slots: ScheduleSlot[]
   };
 }
 
-function assignRefereesToGames(plannedGames: PlannedSpiel[], anmeldungen: AnmeldungRow[]) {
+function assignRefereesToGames(
+  plannedGames: PlannedSpiel[],
+  anmeldungen: AnmeldungRow[],
+  timingProfil: SpielplanTimingProfile
+) {
   const providers = createRefereeProviders(anmeldungen);
 
   if (providers.length === 0) {
@@ -706,10 +725,10 @@ function assignRefereesToGames(plannedGames: PlannedSpiel[], anmeldungen: Anmeld
   const providerLoads = new Map<string, number>();
 
   return [...plannedGames].sort(comparePlannedGames).map((game) => {
-    const window = getPlannedGameWindow(game);
+    const window = getPlannedGameWindow(game, timingProfil);
     const candidates = providers
       .filter((provider) =>
-        !providerIsPlayingDuring(provider, window, plannedGames)
+        !providerIsPlayingDuring(provider, window, plannedGames, timingProfil)
         && providerCanWhistleDuring(provider, window, providerBusy)
       )
       .sort((a, b) => getProviderSchedulingScore(a, providerLoads) - getProviderSchedulingScore(b, providerLoads)
@@ -797,13 +816,18 @@ function providerCanWhistleDuring(
   return concurrentAssignments < provider.crewCount;
 }
 
-function providerIsPlayingDuring(provider: RefereeProvider, window: PlannedGameWindow, plannedGames: PlannedSpiel[]) {
+function providerIsPlayingDuring(
+  provider: RefereeProvider,
+  window: PlannedGameWindow,
+  plannedGames: PlannedSpiel[],
+  timingProfil: SpielplanTimingProfile
+) {
   if (provider.isSvp || provider.matchKeys.length === 0) {
     return false;
   }
 
   return plannedGames.some((game) => {
-    if (!windowsOverlap(window, getPlannedGameWindow(game))) {
+    if (!windowsOverlap(window, getPlannedGameWindow(game, timingProfil))) {
       return false;
     }
 
@@ -826,9 +850,9 @@ function providerMatchesTeam(provider: RefereeProvider, teamName: string) {
   );
 }
 
-function getPlannedGameWindow(game: PlannedSpiel): PlannedGameWindow {
+function getPlannedGameWindow(game: PlannedSpiel, timingProfil: SpielplanTimingProfile): PlannedGameWindow {
   const startMinutes = parseTime(game.zeit);
-  const timing = getSpielzeitRegelForKategorie(game.kategorie);
+  const timing = getSpielzeitRegelForKategorie(game.kategorie, timingProfil);
   const endMinutes = startMinutes + getTimingGameDuration(timing) + Math.max(0, timing.pausenzeit);
 
   return {
@@ -923,10 +947,10 @@ function requestCanUseSlot(
     slot.datum === request.datum
     && requestFitsInSlot(slot, request)
     && requestFitsTimeWindow(slot, request)
+    && requestStartsOnKickoffGrid(slot, request)
     && categoryAllowedOnField(slot.feld, request.baseKategorie, request.datum)
     && fieldCanHostAt(fieldSchedule.get(getFieldScheduleKey(slot)) || [], slot, request)
     && teamsAvoidImmediateFollowUp(slot, request, teamSchedule)
-    && publicNamesAvoidImmediateFollowUp(slot, request, publicNameSchedule)
     && teamsCanPlayAt(slot, request, teamSchedule)
   );
 }
@@ -1064,22 +1088,6 @@ function getPublicNameRestScore(
   }, 0);
 }
 
-function publicNamesAvoidImmediateFollowUp(
-  slot: ScheduleSlot,
-  request: GameRequest,
-  publicNameSchedule: Map<string, TeamScheduleEntry[]>
-) {
-  const startMinutes = slot.startMinutes;
-
-  return getRequestPublicNameKeys(request).every((publicNameKey) =>
-    (publicNameSchedule.get(publicNameKey) || [])
-      .filter((game) => game.datum === slot.datum)
-      .every((game) => {
-        return game.endMinutes !== startMinutes;
-      })
-  );
-}
-
 function getRequestPublicNameKeys(request: GameRequest) {
   return Array.from(new Set([request.team1, request.team2].map(getTeamDisplayKey).filter(Boolean)));
 }
@@ -1133,7 +1141,7 @@ function teamsAvoidImmediateFollowUp(
     const restMinutes = slot.startMinutes - previousGame.endMinutes;
     const pauseMinutes = Math.max(0, request.timing?.pausenzeit ?? slot.feld.pausenzeit);
 
-    return restMinutes > pauseMinutes;
+    return restMinutes >= pauseMinutes;
   });
 }
 
@@ -1159,6 +1167,14 @@ function requestFitsTimeWindow(slot: ScheduleSlot, request: GameRequest) {
 
   return slot.startMinutes >= request.timeWindow.startMinutes
     && requestEndMinutes <= request.timeWindow.endMinutes;
+}
+
+function requestStartsOnKickoffGrid(slot: ScheduleSlot, request: GameRequest) {
+  const gridStart = request.timeWindow?.startMinutes ?? getDayStartMinutes(slot);
+  const slotDuration = getRequestSlotDuration(request, slot);
+
+  return slot.startMinutes >= gridStart
+    && (slot.startMinutes - gridStart) % Math.max(1, slotDuration) === 0;
 }
 
 function fieldCanHostAt(previousGames: TeamScheduleEntry[], slot: ScheduleSlot, request: GameRequest) {
@@ -1460,15 +1476,23 @@ function fieldActiveOnDate(feld: FeldEinstellungen, datum: string) {
   return feld.aktiveTage?.[datum] !== false;
 }
 
-function getDaySummaryTiming(datum: string, settings: TournamentScheduleSettings) {
+function getDaySummaryTiming(
+  datum: string,
+  settings: TournamentScheduleSettings,
+  timingProfil: SpielplanTimingProfile
+) {
   if (datum === settings.turnierStartDatum) {
-    return getSpielzeitRegelForKategorie('E-Jugend');
+    return getSpielzeitRegelForKategorie('E-Jugend', timingProfil);
   }
 
-  return getSpielzeitRegelForKategorie('D-Jugend');
+  return getSpielzeitRegelForKategorie('D-Jugend', timingProfil);
 }
 
-function getDayTimingRuleText(datum: string, zeitbloecke: SpielplanZeitblock[]) {
+function getDayTimingRuleText(
+  datum: string,
+  zeitbloecke: SpielplanZeitblock[],
+  timingProfil: SpielplanTimingProfile
+) {
   const blocksForDay = zeitbloecke.filter((block) => block.datum === datum);
 
   if (blocksForDay.length === 0) {
@@ -1476,7 +1500,10 @@ function getDayTimingRuleText(datum: string, zeitbloecke: SpielplanZeitblock[]) 
   }
 
   return blocksForDay
-    .map((block) => `${block.label}: ${block.startzeit}-${block.endzeit} Uhr`)
+    .map((block) => {
+      const timing = getSpielzeitRegelForKategorie(block.kategorien[0] || block.label, timingProfil);
+      return `${block.label}: ${block.startzeit}-${block.endzeit} Uhr, ${timing.spielzeit}+${timing.pausenzeit} Min`;
+    })
     .join('; ');
 }
 
@@ -1542,6 +1569,10 @@ function getTimingGameDuration(timing: FeldTagesEinstellungen) {
 
 function getFieldScheduleKey(slot: ScheduleSlot) {
   return `${slot.datum}:${slot.feld.name}`;
+}
+
+function getDayStartMinutes(slot: ScheduleSlot) {
+  return slot.dayStartMinutes;
 }
 
 function normalizeClubName(club: string) {
