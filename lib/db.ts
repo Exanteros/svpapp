@@ -1007,6 +1007,77 @@ export function createSpiel(spielData: {
   return spielId;
 }
 
+export interface SpielplanSnapshotSpiel {
+  id?: string | null;
+  datum: string;
+  zeit: string;
+  feld: string;
+  kategorie: string;
+  team1: string;
+  team2: string;
+  status?: string | null;
+  schiedsrichter?: string | null;
+  ergebnis?: string | null;
+  tore_team1?: number | null;
+  tore_team2?: number | null;
+}
+
+export function replaceSpielplanFromSnapshot(spiele: SpielplanSnapshotSpiel[]) {
+  const db = getDatabase();
+  const validStatus = new Set(['geplant', 'laufend', 'halbzeit', 'beendet']);
+  const deleteTimersStmt = db.prepare(`DELETE FROM spiel_live_timers`);
+  const deleteSpieleStmt = db.prepare(`DELETE FROM spiele`);
+  const insertSpielStmt = db.prepare(`
+    INSERT INTO spiele (
+      id, datum, zeit, feld, kategorie, team1, team2,
+      status, schiedsrichter, ergebnis, tore_team1, tore_team2
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const normalizeRequired = (value: string) => String(value ?? '').replace(/\s+/g, ' ').trim();
+  const normalizeGoals = (value: number | null | undefined) => {
+    const goals = Number(value);
+    return Number.isInteger(goals) && goals >= 0 ? goals : null;
+  };
+  const transaction = db.transaction(() => {
+    deleteTimersStmt.run();
+    const deleted = deleteSpieleStmt.run();
+
+    for (const spiel of spiele) {
+      const id = normalizeOptionalText(spiel.id) || createId('spiel');
+      const status = validStatus.has(String(spiel.status || '')) ? String(spiel.status) : 'geplant';
+
+      insertSpielStmt.run(
+        id,
+        normalizeRequired(spiel.datum),
+        normalizeRequired(spiel.zeit),
+        normalizeRequired(spiel.feld),
+        normalizeRequired(spiel.kategorie),
+        normalizeRequired(spiel.team1),
+        normalizeRequired(spiel.team2),
+        status,
+        normalizeOptionalText(spiel.schiedsrichter),
+        normalizeOptionalText(spiel.ergebnis),
+        normalizeGoals(spiel.tore_team1),
+        normalizeGoals(spiel.tore_team2)
+      );
+    }
+
+    return {
+      deleted: deleted.changes,
+      imported: spiele.length,
+    };
+  });
+
+  const result = transaction();
+  const publication = setSpielplanPublicationStatus('draft');
+
+  return {
+    ...result,
+    ...publication,
+  };
+}
+
 export function updateSpielErgebnis(id: string, ergebnis: string, status: string = 'beendet') {
   const db = getDatabase();
 
@@ -1535,11 +1606,12 @@ export function updateSpiel(id: string, spielData: Partial<{
   kategorie: string;
   team1: string;
   team2: string;
+  schiedsrichter: string | null;
   status: string;
   ergebnis: string;
 }>) {
   const db = getDatabase();
-  const allowedFields = new Set(['datum', 'zeit', 'feld', 'kategorie', 'team1', 'team2', 'status', 'ergebnis']);
+  const allowedFields = new Set(['datum', 'zeit', 'feld', 'kategorie', 'team1', 'team2', 'schiedsrichter', 'status', 'ergebnis']);
 
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -1547,7 +1619,7 @@ export function updateSpiel(id: string, spielData: Partial<{
   for (const [key, value] of Object.entries(spielData)) {
     if (value !== undefined && allowedFields.has(key)) {
       fields.push(`${key} = ?`);
-      values.push(value);
+      values.push(key === 'schiedsrichter' ? normalizeOptionalText(value as string | null) : value);
     }
   }
 

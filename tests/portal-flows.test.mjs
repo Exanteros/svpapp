@@ -44,18 +44,21 @@ test('middleware only imports edge-safe session token helpers', async () => {
 
 test('schedule generation, publication and public visibility are preserved', async () => {
   const scheduleRoute = await source('app/api/spielplan/route.ts');
+  const scheduleBackupRoute = await source('app/api/spielplan/backup/route.ts');
   const fieldSettingsRoute = await source('app/api/admin/feld-settings/route.ts');
   const publicRoute = await source('app/api/spielplan/get/route.ts');
   const generator = await source('lib/spielplan-generator.ts');
   const tournament = await source('lib/tournament.ts');
   const db = await source('lib/db.ts');
   const adminPage = await source('app/admin/page.tsx');
+  const adminApi = await source('app/admin/_components/admin-api.ts');
   const liveRoute = await source('app/api/spielplan/live/route.ts');
   const schedulePanel = await source('app/admin/_components/schedule-panel.tsx');
   const scheduleDragBoard = await source('app/admin/_components/schedule-drag-board.tsx');
 
-  assert.match(scheduleRoute, /validActions = new Set\(\['deleteAll', 'generate', 'create', 'update', 'delete', 'publish', 'unpublish'\]\)/);
+  assert.match(scheduleRoute, /validActions = new Set\(\['deleteAll', 'generate', 'assignReferees', 'create', 'update', 'delete', 'publish', 'unpublish'\]\)/);
   assert.match(scheduleRoute, /generateSpielplan\(/);
+  assert.match(scheduleRoute, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(scheduleRoute, /setSpielplanPublicationStatus\('published'\)/);
   assert.match(publicRoute, /settings\.spielplanStatus === 'published'/);
   assert.match(publicRoute, /hideInternalScoresForPublic/);
@@ -72,12 +75,26 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /normalizeSpielplanTimingProfil/);
   assert.match(generator, /getDynamicSpielplanTimingProfiles/);
   assert.match(generator, /applySpielplanTimingOverrides/);
+  assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
+  assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
   assert.match(tournament, /normalizeSpielplanTimingOverrides/);
   assert.match(tournament, /applySpielplanTimingOverrides/);
   assert.match(tournament, /getDuplicateFeldnamen/);
   assert.match(tournament, /capacityMinutes/);
   assert.match(db, /spielplan_timing_overrides/);
+  assert.match(db, /schiedsrichter/);
+  assert.match(db, /replaceSpielplanFromSnapshot/);
+  assert.match(scheduleBackupRoute, /svp-spielplan-snapshot/);
+  assert.match(scheduleBackupRoute, /replaceSpielplanFromSnapshot/);
+  assert.match(scheduleBackupRoute, /notifySpielplanChanged\(\{ reason: 'schedule-import' \}\)/);
+  assert.match(adminPage, /assignSpielplanReferees/);
+  assert.match(adminPage, /exportSpielplanSnapshot/);
+  assert.match(adminPage, /importSpielplanSnapshot/);
+  assert.match(adminApi, /\/api\/spielplan\/backup/);
+  assert.match(schedulePanel, /Schiris zuweisen/);
+  assert.match(schedulePanel, /Exportieren/);
+  assert.match(schedulePanel, /Importieren/);
   assert.match(db, /updateSpielFeldnamen/);
   assert.match(fieldSettingsRoute, /getFieldRenames/);
   assert.match(fieldSettingsRoute, /duplicateFeldnamen/);

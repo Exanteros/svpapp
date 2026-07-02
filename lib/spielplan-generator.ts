@@ -26,7 +26,9 @@ import {
   deleteAllSpiele,
   getAdminSettings,
   getAllAnmeldungen,
+  getSpielplan,
   getStoredFeldEinstellungen,
+  updateSpiel,
 } from './db';
 
 interface AnmeldungTeamRow {
@@ -155,6 +157,13 @@ export interface OptimizedSpielzeitenResult {
   optimierung: SpielzeitOptimierung[];
 }
 
+export interface SchiedsrichterAssignmentResult {
+  spiele: GeneratedSpiel[];
+  assigned: number;
+  open: number;
+  updated: number;
+}
+
 export class SpielplanGenerationError extends Error {
   constructor(message: string) {
     super(message);
@@ -217,6 +226,44 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
       status: 'geplant',
     };
   });
+}
+
+export function assignSchiedsrichterToExistingSpielplan(
+  params: SpielplanGenerationParams = {}
+): SchiedsrichterAssignmentResult {
+  const adminSettings = getAdminSettings();
+  const mergedSettings = {
+    ...adminSettings,
+    ...params.settings,
+  };
+  const settings = resolveTournamentScheduleSettings(mergedSettings);
+  const timingProfilId = normalizeSpielplanTimingProfil(mergedSettings.spielplanTimingProfil);
+  const zeitbloecke = normalizeSpielplanZeitbloecke(mergedSettings.spielplanZeitbloecke, settings);
+  const normalizedFields = normalizeFeldEinstellungen(params.feldEinstellungen ?? getStoredFeldEinstellungen());
+  const fieldLimit = params.feldEinstellungen
+    ? normalizedFields.length
+    : getFieldLimit(params.settings?.anzahlFelder ?? adminSettings.anzahlFelder);
+  const fieldSettings = normalizeFieldDates(
+    normalizedFields.slice(0, fieldLimit),
+    settings
+  );
+  const anmeldungen = getAllAnmeldungen() as AnmeldungRow[];
+  const timingProfil = getGeneratorTimingProfile(anmeldungen, settings, timingProfilId, zeitbloecke, fieldSettings);
+  const existingSpiele = getSpielplan() as GeneratedSpiel[];
+  const assignedSpiele = assignRefereesToGames(existingSpiele, anmeldungen, timingProfil);
+  let updated = 0;
+
+  for (const spiel of assignedSpiele) {
+    const result = updateSpiel(spiel.id, { schiedsrichter: spiel.schiedsrichter ?? null });
+    updated += Number(result.changes || 0);
+  }
+
+  return {
+    spiele: assignedSpiele,
+    assigned: assignedSpiele.filter((spiel) => Boolean(spiel.schiedsrichter)).length,
+    open: assignedSpiele.filter((spiel) => !spiel.schiedsrichter).length,
+    updated,
+  };
 }
 
 export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams = {}): OptimizedSpielzeitenResult {
@@ -820,11 +867,11 @@ function assignGamesToSlotsResult(requests: GameRequest[], slots: ScheduleSlot[]
   };
 }
 
-function assignRefereesToGames(
-  plannedGames: PlannedSpiel[],
+function assignRefereesToGames<T extends PlannedSpiel>(
+  plannedGames: T[],
   anmeldungen: AnmeldungRow[],
   timingProfil: SpielplanTimingProfile
-) {
+): Array<T & { schiedsrichter: string | null }> {
   const providers = createRefereeProviders(anmeldungen);
 
   if (providers.length === 0) {

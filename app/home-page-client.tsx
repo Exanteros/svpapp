@@ -205,8 +205,8 @@ export default function HomePageClient({
               Handball-Turnier des SV Puschendorf
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-white/78 sm:text-xl sm:leading-8">
-              Eine ruhige Turnierübersicht für Anmeldung, Spielplan und Ergebnisse. Alles an einem Ort, ohne
-              unnötigen Lärm.
+              Alle wichtigen Informationen zum Jugendhandball-Rasenturnier: Anmeldung, Spielplan, Ergebnisse und
+              Tagesablauf auf einen Blick.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">

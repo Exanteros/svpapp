@@ -21,6 +21,7 @@ import { exportSimpleSpielplanPDF, previewSpielplanPDF } from "@/lib/pdf-export-
 
 import {
   AdminApiError,
+  assignSpielplanReferees,
   createHelferDemoData,
   createRegistrationDemoData,
   deleteAllSpiele,
@@ -28,6 +29,7 @@ import {
   deleteHelferBedarf,
   deleteRegistration,
   downloadDatabaseBackup,
+  exportSpielplanSnapshot,
   flushHelferDatabase,
   flushRegistrationDatabase,
   generateHelferLink,
@@ -36,6 +38,7 @@ import {
   getFeldEinstellungen,
   getHelferData,
   getSpielplan,
+  importSpielplanSnapshot,
   logout,
   publishSpielplan,
   restoreDatabaseBackup,
@@ -353,6 +356,45 @@ export default function AdminPage() {
     });
   }
 
+  async function handleExportScheduleSnapshot() {
+    await withMutation("Spielplan exportiert", async () => {
+      await exportSpielplanSnapshot();
+    });
+  }
+
+  function handleImportScheduleSnapshot(file: File) {
+    requestConfirm({
+      title: "Spielplan importieren",
+      description: `Der aktuelle Spielplan wird durch "${file.name}" ersetzt und danach als Entwurf geführt. Anmeldungen, Teams und Einstellungen bleiben erhalten.`,
+      confirmLabel: "Spielplan importieren",
+      onConfirm: async () => {
+        await withMutation("Spielplan importiert", async () => {
+          const result = await importSpielplanSnapshot(file);
+          setSpiele(result.spiele);
+          setSettings((current) => ({
+            ...current,
+            spielplanStatus: result.spielplanStatus,
+            spielplanPublishedAt: result.spielplanPublishedAt ?? null,
+          }));
+          await loadAll();
+        });
+      },
+    });
+  }
+
+  async function handleAssignScheduleReferees() {
+    await withMutation("Schiedsrichter zugewiesen", async () => {
+      const assignment = await assignSpielplanReferees(settings, feldEinstellungen);
+      setSpiele(assignment.spiele);
+      setSettings((current) => ({
+        ...current,
+        spielplanStatus: assignment.spielplanStatus,
+        spielplanPublishedAt: assignment.spielplanPublishedAt ?? null,
+      }));
+      await loadAll();
+    });
+  }
+
   async function handlePublishSchedule() {
     await withMutation("Spielplan veröffentlicht", async () => {
       const publication = await publishSpielplan();
@@ -581,6 +623,9 @@ export default function AdminPage() {
             onFeldSettingsSave={handleFieldSettingsChange}
             onSettingsPatch={handleScheduleSettingsPatch}
             onGenerate={handleGenerateSchedule}
+            onExportSnapshot={handleExportScheduleSnapshot}
+            onImportSnapshot={handleImportScheduleSnapshot}
+            onAssignReferees={handleAssignScheduleReferees}
             onPublish={handlePublishSchedule}
             onUnpublish={handleUnpublishSchedule}
             onDeleteAll={handleDeleteAllGames}

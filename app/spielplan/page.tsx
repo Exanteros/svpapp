@@ -13,6 +13,7 @@ import {
   Play,
   RefreshCw,
   Trophy,
+  UserRound,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -598,6 +599,9 @@ export default function SpielplanPage() {
                       const score = showScore ? getScore(spiel) : null;
                       const team1 = formatTeamDisplayName(spiel.team1, teamDisplayNames);
                       const team2 = formatTeamDisplayName(spiel.team2, teamDisplayNames);
+                      const referee = spiel.schiedsrichter?.trim()
+                        ? formatTeamDisplayName(spiel.schiedsrichter, teamDisplayNames)
+                        : "Schiri offen";
 
                       return (
                         <article
@@ -643,11 +647,20 @@ export default function SpielplanPage() {
                             </div>
                           </div>
 
-                          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#eef0e8] pt-3 text-xs text-muted-foreground">
-                            <Badge variant="secondary" className="bg-[#f6f7f1] text-[#4f5d2f]">
-                              {formatScheduleCategoryLabel(spiel.kategorie)}
-                            </Badge>
-                            <span>{currentDay.datum}</span>
+                          <div className="mt-4 grid gap-2 border-t border-[#eef0e8] pt-3 text-xs text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="secondary" className="bg-[#f6f7f1] text-[#4f5d2f]">
+                                {formatScheduleCategoryLabel(spiel.kategorie)}
+                              </Badge>
+                              <span>{currentDay.datum}</span>
+                            </div>
+                            <div
+                              className="inline-flex min-w-0 items-center gap-1.5 text-[#4f5d2f]"
+                              title={`Schiedsrichter: ${referee}`}
+                            >
+                              <UserRound className="size-3.5 shrink-0" />
+                              <span className="truncate">Schiri: {referee}</span>
+                            </div>
                           </div>
                         </article>
                       );

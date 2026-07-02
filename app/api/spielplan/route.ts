@@ -11,7 +11,12 @@ import {
   setSpielplanPublicationStatus,
 } from '@/lib/db';
 import { verifyApiAuth } from '@/lib/dal';
-import { SpielplanGenerationError, generateSpielplan, optimizeSpielzeitenForSchedule } from '@/lib/spielplan-generator';
+import {
+  SpielplanGenerationError,
+  assignSchiedsrichterToExistingSpielplan,
+  generateSpielplan,
+  optimizeSpielzeitenForSchedule,
+} from '@/lib/spielplan-generator';
 import { notifySpielplanChanged } from '@/lib/spielplan-events';
 import { hideInternalScoresForPublic, type ScoreBearingSpiel } from '@/lib/tournament';
 
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const action = body.action;
-    const validActions = new Set(['deleteAll', 'generate', 'create', 'update', 'delete', 'publish', 'unpublish']);
+    const validActions = new Set(['deleteAll', 'generate', 'assignReferees', 'create', 'update', 'delete', 'publish', 'unpublish']);
 
     if (!validActions.has(action)) {
       return NextResponse.json(
@@ -119,6 +124,20 @@ export async function POST(request: NextRequest) {
         spiele: generatedSpiele,
         feldEinstellungen,
         spielzeitOptimierung: optimized?.optimierung ?? [],
+        ...publication,
+      });
+    }
+
+    if (action === 'assignReferees') {
+      const assignment = assignSchiedsrichterToExistingSpielplan({
+        settings: body.settings,
+        feldEinstellungen: body.feldEinstellungen,
+      });
+      const publication = setSpielplanPublicationStatus('draft');
+      notifySpielplanChanged({ reason: 'schedule-referees' });
+      return NextResponse.json({
+        message: 'Schiedsrichter erfolgreich zugewiesen',
+        ...assignment,
         ...publication,
       });
     }

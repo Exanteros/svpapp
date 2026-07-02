@@ -233,6 +233,80 @@ export async function generateSpielplan(
   };
 }
 
+export async function exportSpielplanSnapshot() {
+  const response = await fetch("/api/spielplan/backup", {
+    method: "GET",
+    credentials: "same-origin",
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new AdminApiError(data.error || data.message || `HTTP ${response.status}`, response.status);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const filenameMatch = /filename="([^"]+)"/.exec(disposition);
+  const filename = filenameMatch?.[1] || `svp-spielplan-${new Date().toISOString().slice(0, 10)}.json`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export async function importSpielplanSnapshot(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/spielplan/backup", {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new AdminApiError(data.error || data.message || `HTTP ${response.status}`, response.status);
+  }
+
+  return data as {
+    success: boolean;
+    message: string;
+    spiele: Spiel[];
+    imported: number;
+    deleted: number;
+    spielplanStatus: TurnierEinstellungen["spielplanStatus"];
+    spielplanPublishedAt?: string | null;
+  };
+}
+
+export async function assignSpielplanReferees(
+  settings: TurnierEinstellungen,
+  feldEinstellungen: FeldEinstellungen[]
+) {
+  return jsonRequest<{
+    spiele: Spiel[];
+    assigned: number;
+    open: number;
+    updated: number;
+    spielplanStatus: TurnierEinstellungen["spielplanStatus"];
+    spielplanPublishedAt?: string | null;
+  }>("/api/spielplan", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "assignReferees",
+      settings,
+      feldEinstellungen,
+    }),
+  });
+}
+
 export async function updateSpiel(spielId: string, spiel: Partial<Spiel>) {
   return jsonRequest("/api/spielplan", {
     method: "POST",

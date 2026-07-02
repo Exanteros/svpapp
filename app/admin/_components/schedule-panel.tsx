@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle, ExternalLink, Plus, RotateCcw, SlidersHorizontal, Trash2, Wand2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
+import { CalendarDays, CheckCircle, Download, ExternalLink, Plus, RotateCcw, SlidersHorizontal, Trash2, Upload, UserRoundCheck, Wand2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,9 @@ interface SchedulePanelProps {
   onFeldSettingsSave: (settings: FeldEinstellungen[]) => boolean | Promise<boolean>;
   onSettingsPatch: (patch: Partial<TurnierEinstellungen>) => void | Promise<void>;
   onGenerate: (settingsPatch?: Partial<TurnierEinstellungen>) => void;
+  onExportSnapshot: () => void;
+  onImportSnapshot: (file: File) => void | Promise<void>;
+  onAssignReferees: () => void;
   onPublish: () => void;
   onUnpublish: () => void;
   onDeleteAll: () => void;
@@ -49,11 +53,15 @@ export function SchedulePanel({
   onFeldSettingsSave,
   onSettingsPatch,
   onGenerate,
+  onExportSnapshot,
+  onImportSnapshot,
+  onAssignReferees,
   onPublish,
   onUnpublish,
   onDeleteAll,
   onSpielMove,
 }: SchedulePanelProps) {
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [draftFields, setDraftFields] = useState(feldEinstellungen);
   const [draftZeitbloecke, setDraftZeitbloecke] = useState<SpielplanZeitblock[]>(() =>
     materializeZeitbloecke(settings.spielplanZeitbloecke, settings)
@@ -353,6 +361,15 @@ export function SchedulePanel({
     setDraftTimingOverrides({});
     setSavedTimingOverridesSignature(JSON.stringify({}));
     void onSettingsPatch({ spielplanTimingProfil: profileId, spielplanTimingOverrides: {} });
+  }
+
+  function handleSnapshotImportChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (file) {
+      void onImportSnapshot(file);
+    }
   }
 
   function resetTimingOverrides() {
@@ -833,6 +850,45 @@ export function SchedulePanel({
                 : hasUnsavedTimingOverrides
                   ? "Spielzeiten speichern & generieren"
                   : "Spielplan generieren"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onAssignReferees}
+              disabled={saving || spiele.length === 0}
+              className="w-full sm:w-auto"
+              title={spiele.length === 0 ? "Bitte zuerst einen Spielplan erstellen" : undefined}
+            >
+              <UserRoundCheck className="size-4" />
+              Schiris zuweisen
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onExportSnapshot}
+              disabled={saving || spiele.length === 0}
+              className="w-full sm:w-auto"
+              title={spiele.length === 0 ? "Bitte zuerst einen Spielplan erstellen" : undefined}
+            >
+              <Download className="size-4" />
+              Exportieren
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleSnapshotImportChange}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => importInputRef.current?.click()}
+              disabled={saving}
+              className="w-full sm:w-auto"
+            >
+              <Upload className="size-4" />
+              Importieren
             </Button>
             <Button asChild variant="outline" className="w-full sm:w-auto">
               <a href={previewHref} target="_blank" rel="noreferrer">
