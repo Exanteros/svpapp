@@ -72,6 +72,11 @@ type TimelineItem =
   | { type: "pause"; key: string; minute: number; startzeit: string; endzeit: string; nextBlockLabel: string; duration: number }
   | { type: "games"; key: string; minute: number; zeitSlot: string; spiele: Spiel[] };
 
+interface TeamFilterOption {
+  value: string;
+  label: string;
+}
+
 const dayLabels: Record<DayKey, string> = {
   samstag: "Tag 1",
   sonntag: "Tag 2",
@@ -229,10 +234,16 @@ function getBlocksForDay(data: SpielplanData, day: SpielplanDay) {
 }
 
 function getTeamFilterOptions(spiele: Spiel[], displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>) {
-  return Array.from(new Set(spiele.flatMap((spiel) => [
-    formatTeamDisplayName(spiel.team1, displayNameMap),
-    formatTeamDisplayName(spiel.team2, displayNameMap),
-  ]))).sort((first, second) => first.localeCompare(second, "de", { numeric: true, sensitivity: "base" }));
+  const optionsByValue = new Map<string, TeamFilterOption>();
+
+  spiele.forEach((spiel) => {
+    addTeamFilterOption(optionsByValue, spiel.team1, spiel.kategorie, displayNameMap);
+    addTeamFilterOption(optionsByValue, spiel.team2, spiel.kategorie, displayNameMap);
+  });
+
+  return Array.from(optionsByValue.values()).sort((first, second) =>
+    first.label.localeCompare(second.label, "de", { numeric: true, sensitivity: "base" })
+  );
 }
 
 function gameMatchesTeamFilter(
@@ -244,8 +255,40 @@ function gameMatchesTeamFilter(
     return true;
   }
 
-  return formatTeamDisplayName(spiel.team1, displayNameMap) === selectedTeam
-    || formatTeamDisplayName(spiel.team2, displayNameMap) === selectedTeam;
+  return getTeamFilterValue(spiel.team1, spiel.kategorie, displayNameMap) === selectedTeam
+    || getTeamFilterValue(spiel.team2, spiel.kategorie, displayNameMap) === selectedTeam;
+}
+
+function addTeamFilterOption(
+  optionsByValue: Map<string, TeamFilterOption>,
+  teamName: string,
+  category: string,
+  displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>
+) {
+  const value = getTeamFilterValue(teamName, category, displayNameMap);
+
+  if (!optionsByValue.has(value)) {
+    optionsByValue.set(value, {
+      value,
+      label: getTeamFilterLabel(teamName, category, displayNameMap),
+    });
+  }
+}
+
+function getTeamFilterValue(
+  teamName: string,
+  category: string,
+  displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>
+) {
+  return `${formatTeamDisplayName(teamName, displayNameMap)}::${formatScheduleCategoryLabel(category)}`;
+}
+
+function getTeamFilterLabel(
+  teamName: string,
+  category: string,
+  displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>
+) {
+  return `${formatTeamDisplayName(teamName, displayNameMap)} · ${formatScheduleCategoryLabel(category)}`;
 }
 
 function buildTimelineItems(
@@ -353,7 +396,7 @@ export default function SpielplanPage() {
   );
 
   useEffect(() => {
-    if (selectedTeam !== "alle" && !teamFilterOptions.includes(selectedTeam)) {
+    if (selectedTeam !== "alle" && !teamFilterOptions.some((team) => team.value === selectedTeam)) {
       setSelectedTeam("alle");
     }
   }, [selectedTeam, teamFilterOptions]);
@@ -536,8 +579,8 @@ export default function SpielplanPage() {
               <SelectContent>
                 <SelectItem value="alle">Alle Mannschaften</SelectItem>
                 {teamFilterOptions.map((team) => (
-                  <SelectItem key={team} value={team}>
-                    {team}
+                  <SelectItem key={team.value} value={team.value}>
+                    {team.label}
                   </SelectItem>
                 ))}
               </SelectContent>

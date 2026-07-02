@@ -132,12 +132,15 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(scheduleDragBoard, /twoLineClampStyle/);
 });
 
-test('public schedule can be filtered by visible team names', async () => {
+test('public schedule can be filtered by visible team names and youth', async () => {
   const spielplanPage = await source('app/spielplan/page.tsx');
 
   assert.match(spielplanPage, /const \[selectedTeam, setSelectedTeam\] = useState\("alle"\)/);
   assert.match(spielplanPage, /getTeamFilterOptions\(allGames, teamDisplayNames\)/);
   assert.match(spielplanPage, /gameMatchesTeamFilter\(spiel, selectedTeam, teamDisplayNames\)/);
+  assert.match(spielplanPage, /getTeamFilterValue\(teamName, category, displayNameMap\)/);
+  assert.match(spielplanPage, /formatScheduleCategoryLabel\(category\)/);
+  assert.match(spielplanPage, /\$\{formatTeamDisplayName\(teamName, displayNameMap\)\} · \$\{formatScheduleCategoryLabel\(category\)\}/);
   assert.match(spielplanPage, /Alle Mannschaften/);
   assert.match(spielplanPage, /aria-label="Mannschaft filtern"/);
 });
