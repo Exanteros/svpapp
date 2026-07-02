@@ -80,6 +80,11 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /applySpielplanTimingOverrides/);
   assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
+  assert.match(generator, /providerCanWhistleGame\(provider, game\)/);
+  assert.match(generator, /getRefereeCategoryKey\(team\.kategorie\)/);
+  assert.match(generator, /categoryKeys: Array\.from\(categoryKeys\)\.filter\(Boolean\)/);
+  assert.match(generator, /return load \/ 8 - 1/);
+  assert.match(generator, /getProviderLoadKey\(provider, game\)/);
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
   assert.match(tournament, /normalizeSpielplanTimingOverrides/);
   assert.match(tournament, /applySpielplanTimingOverrides/);
@@ -125,6 +130,16 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(scheduleDragBoard, /h-44 max-h-44/);
   assert.match(scheduleDragBoard, /h-40 max-h-40/);
   assert.match(scheduleDragBoard, /twoLineClampStyle/);
+});
+
+test('public schedule can be filtered by visible team names', async () => {
+  const spielplanPage = await source('app/spielplan/page.tsx');
+
+  assert.match(spielplanPage, /const \[selectedTeam, setSelectedTeam\] = useState\("alle"\)/);
+  assert.match(spielplanPage, /getTeamFilterOptions\(allGames, teamDisplayNames\)/);
+  assert.match(spielplanPage, /gameMatchesTeamFilter\(spiel, selectedTeam, teamDisplayNames\)/);
+  assert.match(spielplanPage, /Alle Mannschaften/);
+  assert.match(spielplanPage, /aria-label="Mannschaft filtern"/);
 });
 
 test('result saving and public score visibility remain guarded', async () => {

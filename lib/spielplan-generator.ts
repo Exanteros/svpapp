@@ -111,6 +111,7 @@ interface RefereeProvider {
   key: string;
   crewCount: number;
   isSvp: boolean;
+  categoryKeys: string[];
   matchKeys: string[];
 }
 
@@ -885,10 +886,11 @@ function assignRefereesToGames<T extends PlannedSpiel>(
     const window = getPlannedGameWindow(game, timingProfil);
     const candidates = providers
       .filter((provider) =>
-        !providerIsPlayingDuring(provider, window, plannedGames, timingProfil)
+        providerCanWhistleGame(provider, game)
+        && !providerIsPlayingDuring(provider, window, plannedGames, timingProfil)
         && providerCanWhistleDuring(provider, window, providerBusy)
       )
-      .sort((a, b) => getProviderSchedulingScore(a, providerLoads) - getProviderSchedulingScore(b, providerLoads)
+      .sort((a, b) => getProviderSchedulingScore(a, providerLoads, game) - getProviderSchedulingScore(b, providerLoads, game)
         || a.label.localeCompare(b.label, 'de'));
     const provider = candidates[0] || null;
 
@@ -897,9 +899,11 @@ function assignRefereesToGames<T extends PlannedSpiel>(
     }
 
     const busyEntries = providerBusy.get(provider.key) || [];
+    const loadKey = getProviderLoadKey(provider, game);
+
     busyEntries.push(window);
     providerBusy.set(provider.key, busyEntries);
-    providerLoads.set(provider.key, (providerLoads.get(provider.key) || 0) + 1);
+    providerLoads.set(loadKey, (providerLoads.get(loadKey) || 0) + 1);
 
     return {
       ...game,
@@ -932,7 +936,13 @@ function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
       const existing = providers.get(key);
       const teamCount = Math.max(1, Math.floor(Number(team.anzahl || 1)));
       const isSvp = isSvpRefereeProvider(label);
+      const categoryKey = getRefereeCategoryKey(team.kategorie);
+      const categoryKeys = new Set(existing?.categoryKeys || []);
       const matchKeys = new Set(existing?.matchKeys || []);
+
+      if (categoryKey) {
+        categoryKeys.add(categoryKey);
+      }
 
       if (!isSvp) {
         matchKeys.add(normalizeRefereeKey(label));
@@ -946,6 +956,7 @@ function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
         key,
         crewCount: isSvp ? Number.POSITIVE_INFINITY : (existing?.crewCount || 0) + teamCount,
         isSvp,
+        categoryKeys: Array.from(categoryKeys).filter(Boolean),
         matchKeys: Array.from(matchKeys).filter(Boolean),
       });
     }
@@ -954,11 +965,24 @@ function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
   return Array.from(providers.values());
 }
 
-function getProviderSchedulingScore(provider: RefereeProvider, providerLoads: Map<string, number>) {
-  const load = providerLoads.get(provider.key) || 0;
-  const normalizedLoad = Number.isFinite(provider.crewCount) ? load / provider.crewCount : load / 1000;
+function getProviderSchedulingScore(provider: RefereeProvider, providerLoads: Map<string, number>, game: PlannedSpiel) {
+  const load = providerLoads.get(getProviderLoadKey(provider, game)) || 0;
 
-  return normalizedLoad + (provider.isSvp ? 2 : 0);
+  if (provider.isSvp) {
+    return load / 8 - 1;
+  }
+
+  return load / Math.max(1, provider.crewCount);
+}
+
+function getProviderLoadKey(provider: RefereeProvider, game: PlannedSpiel) {
+  return `${provider.key}:${getRefereeCategoryKey(game.kategorie)}`;
+}
+
+function providerCanWhistleGame(provider: RefereeProvider, game: PlannedSpiel) {
+  const categoryKey = getRefereeCategoryKey(game.kategorie);
+
+  return Boolean(categoryKey && provider.categoryKeys.includes(categoryKey));
 }
 
 function providerCanWhistleDuring(
@@ -1053,6 +1077,21 @@ function normalizeRefereeKey(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+function getRefereeCategoryKey(categoryName: string) {
+  const categoryWithoutSkill = String(categoryName ?? '').replace(/\s+\([^)]*\)\s*$/, '').trim();
+  const normalizedCategory = normalizeCategoryName(categoryWithoutSkill);
+
+  if (isMiniCategory(normalizedCategory)) {
+    return 'mini';
+  }
+
+  if (isEJugendCategory(normalizedCategory)) {
+    return 'ejugend';
+  }
+
+  return normalizeRefereeKey(stripImportedCategoryGender(normalizedCategory));
 }
 
 function findBestRequestIndexForSlot(

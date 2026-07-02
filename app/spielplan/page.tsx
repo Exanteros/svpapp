@@ -228,6 +228,26 @@ function getBlocksForDay(data: SpielplanData, day: SpielplanDay) {
     .sort((first, second) => timeToMinutes(first.startzeit) - timeToMinutes(second.startzeit));
 }
 
+function getTeamFilterOptions(spiele: Spiel[], displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>) {
+  return Array.from(new Set(spiele.flatMap((spiel) => [
+    formatTeamDisplayName(spiel.team1, displayNameMap),
+    formatTeamDisplayName(spiel.team2, displayNameMap),
+  ]))).sort((first, second) => first.localeCompare(second, "de", { numeric: true, sensitivity: "base" }));
+}
+
+function gameMatchesTeamFilter(
+  spiel: Spiel,
+  selectedTeam: string,
+  displayNameMap: ReturnType<typeof createTeamDisplayNameMapFromGames>
+) {
+  if (selectedTeam === "alle") {
+    return true;
+  }
+
+  return formatTeamDisplayName(spiel.team1, displayNameMap) === selectedTeam
+    || formatTeamDisplayName(spiel.team2, displayNameMap) === selectedTeam;
+}
+
 function buildTimelineItems(
   timeSlots: string[],
   groupedSpiele: Record<string, Spiel[]>,
@@ -287,6 +307,7 @@ function buildTimelineItems(
 export default function SpielplanPage() {
   const [spielplanData, setSpielplanData] = useState<SpielplanData | null>(null);
   const [selectedField, setSelectedField] = useState("alle");
+  const [selectedTeam, setSelectedTeam] = useState("alle");
   const [activeDay, setActiveDay] = useState<DayKey>("samstag");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,6 +347,16 @@ export default function SpielplanPage() {
     () => createTeamDisplayNameMapFromGames(allGames),
     [allGames]
   );
+  const teamFilterOptions = useMemo(
+    () => getTeamFilterOptions(allGames, teamDisplayNames),
+    [allGames, teamDisplayNames]
+  );
+
+  useEffect(() => {
+    if (selectedTeam !== "alle" && !teamFilterOptions.includes(selectedTeam)) {
+      setSelectedTeam("alle");
+    }
+  }, [selectedTeam, teamFilterOptions]);
 
   const nextGameIds = useMemo(() => {
     const upcomingGames = allGames
@@ -381,7 +412,10 @@ export default function SpielplanPage() {
 
   const currentDay = spielplanData[activeDay];
   const filteredSpiele =
-    selectedField === "alle" ? currentDay.spiele : currentDay.spiele.filter((spiel) => spiel.feld === selectedField);
+    currentDay.spiele.filter((spiel) => (
+      (selectedField === "alle" || spiel.feld === selectedField)
+      && gameMatchesTeamFilter(spiel, selectedTeam, teamDisplayNames)
+    ));
   const groupedSpiele = groupByTime(filteredSpiele);
   const timeSlots = Object.keys(groupedSpiele).sort();
   const dayBlocks = getBlocksForDay(spielplanData, currentDay);
@@ -447,7 +481,7 @@ export default function SpielplanPage() {
           </div>
         )}
 
-        <div className="mb-6 grid gap-3 rounded-[8px] border border-[#d9dec8] bg-white p-3 shadow-sm md:grid-cols-[minmax(0,1fr)_240px] md:items-center">
+        <div className="mb-6 grid gap-3 rounded-[8px] border border-[#d9dec8] bg-white p-3 shadow-sm lg:grid-cols-[minmax(0,1fr)_240px_280px] lg:items-center">
           <div className="grid grid-cols-2 gap-2">
             {(["samstag", "sonntag"] as DayKey[]).map((dayKey) => {
               const day = spielplanData[dayKey];
@@ -492,6 +526,23 @@ export default function SpielplanPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center gap-2">
+            <UserRound className="size-4 shrink-0 text-[#4f5d2f]" />
+            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+              <SelectTrigger aria-label="Mannschaft filtern" className="border-[#d9dec8] bg-[#fbfbf8]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alle">Alle Mannschaften</SelectItem>
+                {teamFilterOptions.map((team) => (
+                  <SelectItem key={team} value={team}>
+                    {team}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
@@ -514,9 +565,9 @@ export default function SpielplanPage() {
             <CalendarDays className="mx-auto mb-4 size-8 text-[#8a9868]" />
             <div className="font-semibold">Keine Spiele gefunden</div>
             <div className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-              {selectedField === "alle"
+              {selectedField === "alle" && selectedTeam === "alle"
                 ? "Für diesen Tag sind noch keine Spiele geplant."
-                : `Für ${selectedField} sind keine Spiele geplant.`}
+                : "Für die aktuellen Filter sind keine Spiele geplant."}
             </div>
           </div>
         ) : (
