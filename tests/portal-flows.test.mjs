@@ -84,7 +84,11 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /getMiniELeistungsgruppe\(team\.kategorie, team\.spielstaerke\)/);
   assert.match(generator, /assignBalancedMiniELeistungsgruppen\(teamSlots\)/);
   assert.match(generator, /const strongCount = Math\.ceil\(sortedSlots\.length \/ 2\)/);
+  assert.match(generator, /createFairnessTargets\(contexts\)/);
+  assert.match(generator, /createBalancedFillRequests/);
+  assert.match(generator, /maxGamesPerTeam: Math\.ceil\(\(group\.capacity \* 2\) \/ teamCount\)/);
   assert.match(generator, /requestAllowedOnField\(slot, request\)/);
+  assert.match(generator, /requestKeepsTeamLoadUnderLimit\(request, teamSchedule\)/);
   assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
   assert.match(generator, /providerCanWhistleGame\(provider, game\)/);

@@ -80,9 +80,11 @@ interface GameRequest {
   baseKategorie: string;
   kategorie: string;
   fieldGroup: string;
+  loadGroup: string;
   timing?: FeldTagesEinstellungen;
   timeWindow?: RequestTimeWindow;
   preferredFieldId?: string;
+  maxGamesPerTeam?: number;
   team1: string;
   team2: string;
   roundIndex: number;
@@ -118,6 +120,15 @@ interface RefereeProvider {
   isSvp: boolean;
   categoryKeys: string[];
   matchKeys: string[];
+}
+
+interface GameRequestContext {
+  kategorie: string;
+  teams: TeamEntry[];
+  requests: GameRequest[];
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'timing' | 'timeWindow' | 'preferredFieldId'>;
+  capacity: number;
+  loadGroup: string;
 }
 
 interface PlannedGameWindow {
@@ -203,6 +214,8 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
     zeitbloecke,
     leistungsgruppen: mergedSettings.spielplanLeistungsgruppen,
     availableFieldIds: fieldSettings.map((field) => field.id),
+    feldEinstellungen: fieldSettings,
+    settings,
   }));
   const slots = createScheduleSlots(fieldSettings, settings);
   const plannedGames = assignRefereesToGames(assignGamesToSlots(requests, slots, {
@@ -299,6 +312,8 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
     zeitbloecke,
     leistungsgruppen: mergedSettings.spielplanLeistungsgruppen,
     availableFieldIds: optimizedFields.map((field) => field.id),
+    feldEinstellungen: optimizedFields,
+    settings,
   }));
   const days = [settings.turnierStartDatum, settings.turnierEndDatum];
   const optimierung: SpielzeitOptimierung[] = [];
@@ -393,11 +408,14 @@ function createGameRequests(
     zeitbloecke?: SpielplanZeitblock[];
     leistungsgruppen?: SpielplanLeistungsgruppe[];
     availableFieldIds?: string[];
+    feldEinstellungen?: FeldEinstellungen[];
+    settings?: TournamentScheduleSettings;
   } = {}
 ) {
   const teamsByCategory = groupTeamsByCategory(anmeldungen);
   const leistungsgruppen = normalizeSpielplanLeistungsgruppen(options.leistungsgruppen);
   const availableFieldIds = new Set(options.availableFieldIds || []);
+  const contexts: GameRequestContext[] = [];
   const requests: GameRequest[] = [];
 
   for (const [kategorie, niveauGroups] of Object.entries(teamsByCategory).sort(([a], [b]) => a.localeCompare(b, 'de'))) {
@@ -409,21 +427,235 @@ function createGameRequests(
       }
 
       const datum = getDateForCategory(kategorie, settings);
+      const loadGroup = getRequestLoadGroupKey(datum, kategorie);
       const requestBase = {
         datum,
         baseKategorie: kategorie,
         kategorie: createScheduleCategoryLabel(kategorie, niveau),
         fieldGroup: `${datum}:${kategorie}:${niveau}`,
+        loadGroup,
         timing: options.useCategoryTimings ? getSpielzeitRegelForKategorie(kategorie, options.timingProfil) : undefined,
         timeWindow: getTimeWindowForCategory(kategorie, datum, options.zeitbloecke || []),
         preferredFieldId: getPreferredFieldIdForLeistungsgruppe(kategorie, niveau, leistungsgruppen, availableFieldIds),
       };
       const categoryRequests = createRoundRobinRequests(sortedTeams, requestBase);
-      requests.push(...expandRequestsForCategoryFill(categoryRequests, sortedTeams, kategorie, requestBase));
+
+      contexts.push({
+        kategorie,
+        teams: sortedTeams,
+        requests: categoryRequests,
+        requestBase,
+        capacity: getRequestGroupCapacity(requestBase, options.feldEinstellungen || [], options.settings ?? settings),
+        loadGroup,
+      });
     }
   }
 
+  const fairnessTargets = createFairnessTargets(contexts);
+
+  for (const context of contexts) {
+    const fairnessTarget = fairnessTargets.get(context.loadGroup);
+    const limitedRequests = context.requests.map((request) => ({
+      ...request,
+      maxGamesPerTeam: fairnessTarget?.maxGamesPerTeam,
+    }));
+
+    if (isBalancedLoadCategory(context.kategorie)) {
+      requests.push(...createBalancedFillRequests(
+        limitedRequests,
+        context.teams,
+        context.capacity,
+        true,
+        fairnessTarget?.maxGamesPerTeam
+      ));
+      continue;
+    }
+
+    requests.push(...expandRequestsForCategoryFill(limitedRequests, context.teams, context.kategorie, context.requestBase));
+  }
+
   return requests;
+}
+
+function createFairnessTargets(contexts: GameRequestContext[]) {
+  const targets = new Map<string, { maxGamesPerTeam: number }>();
+  const groups = new Map<string, { teams: Set<string>; capacity: number }>();
+
+  for (const context of contexts) {
+    if (!isBalancedLoadCategory(context.kategorie)) {
+      continue;
+    }
+
+    const group = groups.get(context.loadGroup) || { teams: new Set<string>(), capacity: 0 };
+
+    for (const team of context.teams) {
+      group.teams.add(team.name);
+    }
+
+    group.capacity += Math.max(0, context.capacity);
+    groups.set(context.loadGroup, group);
+  }
+
+  groups.forEach((group, loadGroup) => {
+    const teamCount = group.teams.size;
+
+    if (teamCount === 0 || group.capacity === 0) {
+      return;
+    }
+
+    targets.set(loadGroup, {
+      maxGamesPerTeam: Math.ceil((group.capacity * 2) / teamCount),
+    });
+  });
+
+  return targets;
+}
+
+function createBalancedFillRequests(
+  requests: GameRequest[],
+  teams: TeamEntry[],
+  targetGameCount: number,
+  allowRepeats: boolean,
+  maxGamesPerTeam?: number
+) {
+  if (requests.length === 0 || teams.length < 2 || targetGameCount <= 0) {
+    return [];
+  }
+
+  const teamLoads = new Map(teams.map((team) => [team.name, 0]));
+  const pairLoads = new Map<string, number>();
+  const usedRequestIndexes = new Set<number>();
+  const balancedRequests: GameRequest[] = [];
+  const cappedTargetGameCount = allowRepeats
+    ? targetGameCount
+    : Math.min(targetGameCount, requests.length);
+
+  for (let roundIndex = 0; roundIndex < cappedTargetGameCount; roundIndex += 1) {
+    const candidates = requests
+      .map((request, index) => ({ request, index }))
+      .filter(({ request, index }) => {
+        if (!allowRepeats && usedRequestIndexes.has(index)) {
+          return false;
+        }
+
+        if (!maxGamesPerTeam) {
+          return true;
+        }
+
+        return [request.team1, request.team2].every((teamName) =>
+          (teamLoads.get(teamName) || 0) < maxGamesPerTeam
+        );
+      })
+      .sort((first, second) =>
+        getBalancedRequestScore(first.request, teamLoads, pairLoads)
+          - getBalancedRequestScore(second.request, teamLoads, pairLoads)
+        || first.request.roundIndex - second.request.roundIndex
+        || first.index - second.index
+      );
+
+    const selected = candidates[0];
+
+    if (!selected) {
+      break;
+    }
+
+    const request = selected.request;
+    const pairKey = getPairLoadKey(request);
+
+    if (!allowRepeats) {
+      usedRequestIndexes.add(selected.index);
+    }
+
+    teamLoads.set(request.team1, (teamLoads.get(request.team1) || 0) + 1);
+    teamLoads.set(request.team2, (teamLoads.get(request.team2) || 0) + 1);
+    pairLoads.set(pairKey, (pairLoads.get(pairKey) || 0) + 1);
+    balancedRequests.push({
+      ...request,
+      roundIndex,
+    });
+  }
+
+  return balancedRequests;
+}
+
+function getBalancedRequestScore(
+  request: GameRequest,
+  teamLoads: Map<string, number>,
+  pairLoads: Map<string, number>
+) {
+  const team1Load = teamLoads.get(request.team1) || 0;
+  const team2Load = teamLoads.get(request.team2) || 0;
+
+  return Math.max(team1Load, team2Load) * 10000
+    + (team1Load + team2Load) * 1000
+    + Math.abs(team1Load - team2Load) * 250
+    + (pairLoads.get(getPairLoadKey(request)) || 0) * 500;
+}
+
+function getPairLoadKey(request: Pick<GameRequest, 'team1' | 'team2'>) {
+  return [request.team1, request.team2]
+    .sort((a, b) => a.localeCompare(b, 'de', { numeric: true, sensitivity: 'base' }))
+    .join('::');
+}
+
+function getRequestGroupCapacity(
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'timing' | 'timeWindow' | 'preferredFieldId'>,
+  feldEinstellungen: FeldEinstellungen[],
+  settings: TournamentScheduleSettings
+) {
+  if (feldEinstellungen.length === 0) {
+    return 0;
+  }
+
+  const window = getRequestDayWindow(requestBase, settings);
+
+  if (!window || window.endMinutes <= window.startMinutes) {
+    return 0;
+  }
+
+  return feldEinstellungen.reduce((capacity, feld) => {
+    const fieldAllowed = requestBase.preferredFieldId
+      ? feld.id === requestBase.preferredFieldId && fieldActiveOnDate(feld, requestBase.datum)
+      : categoryAllowedOnField(feld, requestBase.baseKategorie, requestBase.datum);
+
+    if (!fieldAllowed) {
+      return capacity;
+    }
+
+    const fieldForDay = resolveFeldEinstellungenForDate(feld, requestBase.datum);
+    const slotDuration = requestBase.timing
+      ? getTimingGameDuration(requestBase.timing) + Math.max(0, requestBase.timing.pausenzeit)
+      : getSlotDuration(fieldForDay);
+
+    return capacity + Math.floor((window.endMinutes - window.startMinutes) / Math.max(1, slotDuration));
+  }, 0);
+}
+
+function getRequestDayWindow(
+  requestBase: Pick<GameRequest, 'datum' | 'timeWindow'>,
+  settings: TournamentScheduleSettings
+) {
+  const dayStartMinutes = requestBase.datum === settings.turnierStartDatum
+    ? parseTime(settings.samstagStartzeit, parseTime(DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.samstagStartzeit))
+    : parseTime(settings.sonntagStartzeit, parseTime(DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagStartzeit));
+  const dayEndMinutes = requestBase.datum === settings.turnierStartDatum
+    ? parseTime(settings.samstagEndzeit, parseTime(DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.samstagEndzeit))
+    : parseTime(settings.sonntagEndzeit, parseTime(DEFAULT_TOURNAMENT_SCHEDULE_SETTINGS.sonntagEndzeit));
+
+  return {
+    startMinutes: Math.max(dayStartMinutes, requestBase.timeWindow?.startMinutes ?? dayStartMinutes),
+    endMinutes: Math.min(dayEndMinutes, requestBase.timeWindow?.endMinutes ?? dayEndMinutes),
+  };
+}
+
+function getRequestLoadGroupKey(datum: string, kategorie: string) {
+  return isBalancedLoadCategory(kategorie)
+    ? `${datum}:${normalizeCategoryName(kategorie)}`
+    : `${datum}:${kategorie}`;
+}
+
+function isBalancedLoadCategory(kategorie: string) {
+  return isMiniCategory(kategorie) || isEJugendCategory(kategorie);
 }
 
 function expandRequestsForCategoryFill(
@@ -833,14 +1065,14 @@ function getTeamNameCategory(categoryName: string) {
 
 function createRoundRobinRequests(
   teams: TeamEntry[],
-  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'loadGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
 ) {
   return createPairingCandidates(teams, requestBase);
 }
 
 function createPairingCandidates(
   teams: TeamEntry[],
-  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'loadGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
 ) {
   const requests: GameRequest[] = [];
 
@@ -1363,9 +1595,23 @@ function requestCanUseSlot(
     && requestFitsTimeWindow(slot, request)
     && requestStartsOnKickoffGrid(slot, request)
     && requestAllowedOnField(slot, request)
+    && requestKeepsTeamLoadUnderLimit(request, teamSchedule)
     && fieldCanHostAt(fieldSchedule.get(getFieldScheduleKey(slot)) || [], slot, request)
     && teamsAvoidImmediateFollowUp(slot, request, teamSchedule)
     && teamsCanPlayAt(slot, request, teamSchedule)
+  );
+}
+
+function requestKeepsTeamLoadUnderLimit(
+  request: GameRequest,
+  teamSchedule: Map<string, TeamScheduleEntry[]>
+) {
+  if (!request.maxGamesPerTeam) {
+    return true;
+  }
+
+  return [request.team1, request.team2].every((teamName) =>
+    (teamSchedule.get(teamName)?.length || 0) < request.maxGamesPerTeam!
   );
 }
 
@@ -1401,11 +1647,11 @@ function createRequestTeamGroups(requests: GameRequest[]) {
   const groups = new Map<string, Set<string>>();
 
   requests.forEach((request) => {
-    const group = groups.get(request.fieldGroup) || new Set<string>();
+    const group = groups.get(request.loadGroup) || new Set<string>();
 
     group.add(request.team1);
     group.add(request.team2);
-    groups.set(request.fieldGroup, group);
+    groups.set(request.loadGroup, group);
   });
 
   return Array.from(groups.entries()).reduce<Map<string, string[]>>((result, [key, teams]) => {
@@ -1442,7 +1688,7 @@ function getTeamLoadScore(
   const team2Games = teamSchedule.get(request.team2)?.length || 0;
   const highestLoad = Math.max(team1Games, team2Games);
   const loadDifference = Math.abs(team1Games - team2Games);
-  const groupLoads = (requestTeamGroups.get(request.fieldGroup) || [request.team1, request.team2])
+  const groupLoads = (requestTeamGroups.get(request.loadGroup) || [request.team1, request.team2])
     .map((teamName) => teamSchedule.get(teamName)?.length || 0);
   const lowestGroupLoad = groupLoads.length > 0 ? Math.min(...groupLoads) : 0;
   const team1Excess = Math.max(0, team1Games - lowestGroupLoad);
