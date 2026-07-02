@@ -862,6 +862,19 @@ export function SchedulePanel({
               <UserRoundCheck className="size-4" />
               Schiris zuweisen
             </Button>
+            <div className="flex min-h-10 items-center justify-between gap-3 rounded-[8px] border border-[#e1e4d8] bg-white px-3 py-2 sm:w-auto">
+              <Label htmlFor="schiri-view" className="whitespace-nowrap text-xs font-medium text-[#4f5d2f]">
+                Schiri-Anzeige
+              </Label>
+              <Switch
+                id="schiri-view"
+                checked={settings.schiedsrichterAnzeigeAktiv !== false}
+                disabled={saving}
+                onCheckedChange={(checked) => {
+                  void onSettingsPatch({ schiedsrichterAnzeigeAktiv: Boolean(checked) });
+                }}
+              />
+            </div>
             <Button
               type="button"
               variant="outline"

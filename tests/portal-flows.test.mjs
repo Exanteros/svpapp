@@ -52,6 +52,7 @@ test('schedule generation, publication and public visibility are preserved', asy
   const db = await source('lib/db.ts');
   const adminPage = await source('app/admin/page.tsx');
   const adminApi = await source('app/admin/_components/admin-api.ts');
+  const adminTypes = await source('app/admin/_components/types.ts');
   const liveRoute = await source('app/api/spielplan/live/route.ts');
   const schedulePanel = await source('app/admin/_components/schedule-panel.tsx');
   const scheduleDragBoard = await source('app/admin/_components/schedule-drag-board.tsx');
@@ -62,6 +63,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(scheduleRoute, /setSpielplanPublicationStatus\('published'\)/);
   assert.match(publicRoute, /settings\.spielplanStatus === 'published'/);
   assert.match(publicRoute, /hideInternalScoresForPublic/);
+  assert.match(publicRoute, /schiedsrichterAnzeigeAktiv/);
+  assert.match(publicRoute, /hideReferees/);
   assert.match(publicRoute, /normalizeSpielplanZeitbloecke/);
   assert.match(publicRoute, /spielplanZeitbloecke/);
   assert.match(generator, /feld: slot\.feld\.name/);
@@ -84,6 +87,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(tournament, /capacityMinutes/);
   assert.match(db, /spielplan_timing_overrides/);
   assert.match(db, /schiedsrichter/);
+  assert.match(db, /schiedsrichterAnzeigeAktiv/);
+  assert.match(db, /schiedsrichter_anzeige_aktiv/);
   assert.match(db, /replaceSpielplanFromSnapshot/);
   assert.match(scheduleBackupRoute, /svp-spielplan-snapshot/);
   assert.match(scheduleBackupRoute, /replaceSpielplanFromSnapshot/);
@@ -93,8 +98,11 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(adminPage, /importSpielplanSnapshot/);
   assert.match(adminApi, /\/api\/spielplan\/backup/);
   assert.match(schedulePanel, /Schiris zuweisen/);
+  assert.match(schedulePanel, /Schiri-Anzeige/);
+  assert.match(schedulePanel, /onSettingsPatch\(\{ schiedsrichterAnzeigeAktiv: Boolean\(checked\) \}\)/);
   assert.match(schedulePanel, /Exportieren/);
   assert.match(schedulePanel, /Importieren/);
+  assert.match(adminTypes, /schiedsrichterAnzeigeAktiv: boolean/);
   assert.match(db, /updateSpielFeldnamen/);
   assert.match(fieldSettingsRoute, /getFieldRenames/);
   assert.match(fieldSettingsRoute, /duplicateFeldnamen/);

@@ -1267,6 +1267,7 @@ export function getAdminSettings() {
     samstagToreSichtbar: false,
     sonntagToreSichtbar: true,
     ergebnisTabellenAktiv: false,
+    schiedsrichterAnzeigeAktiv: true,
     spielzeitenAutomatisch: true,
     spielplanTimingProfil: 'standard',
     spielplanTimingOverrides: {},
@@ -1342,6 +1343,9 @@ export function getAdminSettings() {
         break;
       case 'ergebnis_tabellen_aktiv':
         result.ergebnisTabellenAktiv = setting.value === 'true';
+        break;
+      case 'schiedsrichter_anzeige_aktiv':
+        result.schiedsrichterAnzeigeAktiv = setting.value !== 'false';
         break;
       case 'spielzeiten_automatisch':
         result.spielzeitenAutomatisch = setting.value !== 'false';
@@ -1431,6 +1435,7 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('24', 'anmeldung_aktiv', settings.anmeldungAktiv === false ? 'false' : 'true');
     updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
     updateSetting.run('26', 'spielzeiten_automatisch', settings.spielzeitenAutomatisch === false ? 'false' : 'true');
+    updateSetting.run('30', 'schiedsrichter_anzeige_aktiv', settings.schiedsrichterAnzeigeAktiv === false ? 'false' : 'true');
     updateSetting.run('28', 'spielplan_timing_profil', normalizeSpielplanTimingProfil(settings.spielplanTimingProfil));
     updateSetting.run(
       '29',

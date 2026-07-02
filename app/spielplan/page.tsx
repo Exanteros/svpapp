@@ -61,6 +61,7 @@ interface SpielplanData {
   spielplanZeitbloecke?: SpielplanZeitblock[];
   spielplanStatus?: string;
   spielplanPublishedAt?: string;
+  schiedsrichterAnzeigeAktiv?: boolean;
 }
 
 type DayKey = "samstag" | "sonntag";
@@ -599,7 +600,8 @@ export default function SpielplanPage() {
                       const score = showScore ? getScore(spiel) : null;
                       const team1 = formatTeamDisplayName(spiel.team1, teamDisplayNames);
                       const team2 = formatTeamDisplayName(spiel.team2, teamDisplayNames);
-                      const referee = spiel.schiedsrichter?.trim()
+                      const showReferee = spielplanData.schiedsrichterAnzeigeAktiv !== false;
+                      const referee = showReferee && spiel.schiedsrichter?.trim()
                         ? formatTeamDisplayName(spiel.schiedsrichter, teamDisplayNames)
                         : "Schiri offen";
 
@@ -654,13 +656,15 @@ export default function SpielplanPage() {
                               </Badge>
                               <span>{currentDay.datum}</span>
                             </div>
-                            <div
-                              className="inline-flex min-w-0 items-center gap-1.5 text-[#4f5d2f]"
-                              title={`Schiedsrichter: ${referee}`}
-                            >
-                              <UserRound className="size-3.5 shrink-0" />
-                              <span className="truncate">Schiri: {referee}</span>
-                            </div>
+                            {showReferee && (
+                              <div
+                                className="inline-flex min-w-0 items-center gap-1.5 text-[#4f5d2f]"
+                                title={`Schiedsrichter: ${referee}`}
+                              >
+                                <UserRound className="size-3.5 shrink-0" />
+                                <span className="truncate">Schiri: {referee}</span>
+                              </div>
+                            )}
                           </div>
                         </article>
                       );

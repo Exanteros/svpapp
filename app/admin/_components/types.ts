@@ -113,6 +113,7 @@ export interface TurnierEinstellungen {
   samstagToreSichtbar: boolean;
   sonntagToreSichtbar: boolean;
   ergebnisTabellenAktiv: boolean;
+  schiedsrichterAnzeigeAktiv: boolean;
   spielzeitenAutomatisch: boolean;
   spielplanTimingProfil: "kompakt" | "standard" | "lang";
   spielplanTimingOverrides: SpielplanTimingOverrides;
@@ -235,6 +236,7 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   samstagToreSichtbar: false,
   sonntagToreSichtbar: true,
   ergebnisTabellenAktiv: false,
+  schiedsrichterAnzeigeAktiv: true,
   spielzeitenAutomatisch: true,
   spielplanTimingProfil: "standard",
   spielplanTimingOverrides: {},

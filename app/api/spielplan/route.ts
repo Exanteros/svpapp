@@ -33,7 +33,10 @@ export async function GET(request: NextRequest) {
     const authResult = await verifyApiAuth(request);
     const canViewDraft = authResult.authenticated || settings.spielplanStatus === 'published';
     const rawSpiele = canViewDraft ? getSpielplan(datum || undefined) as PublicSpiel[] : [];
-    const spiele = authResult.authenticated ? rawSpiele : hideInternalScoresForPublic(rawSpiele, settings);
+    const visibleSpiele = authResult.authenticated || settings.schiedsrichterAnzeigeAktiv !== false
+      ? rawSpiele
+      : hideReferees(rawSpiele);
+    const spiele = authResult.authenticated ? visibleSpiele : hideInternalScoresForPublic(visibleSpiele, settings);
     
     return NextResponse.json({
       spiele,
@@ -46,6 +49,13 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function hideReferees(spiele: PublicSpiel[]) {
+  return spiele.map((spiel) => ({
+    ...spiel,
+    schiedsrichter: null,
+  }));
 }
 
 export async function POST(request: NextRequest) {

@@ -72,7 +72,10 @@ export async function GET(request: NextRequest) {
     const samstagDatum = scheduleSettings.turnierStartDatum;
     const sonntagDatum = scheduleSettings.turnierEndDatum;
     const spielplanZeitbloecke = normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, scheduleSettings);
-    const spiele = (includeDraft ? rawSpiele : hideInternalScoresForPublic(rawSpiele, settings)).map((spiel) => ({
+    const visibleSpiele = includeDraft || settings.schiedsrichterAnzeigeAktiv !== false
+      ? rawSpiele
+      : hideReferees(rawSpiele);
+    const spiele = (includeDraft ? visibleSpiele : hideInternalScoresForPublic(visibleSpiele, settings)).map((spiel) => ({
       ...spiel,
       kategorie: formatScheduleCategoryLabel(spiel.kategorie),
     }));
@@ -116,6 +119,7 @@ export async function GET(request: NextRequest) {
       spielplanZeitbloecke,
       spielplanStatus: settings.spielplanStatus,
       spielplanPublishedAt: settings.spielplanPublishedAt,
+      schiedsrichterAnzeigeAktiv: settings.schiedsrichterAnzeigeAktiv !== false,
     };
 
     // Setze No-Cache Headers um sicherzustellen, dass immer aktuelle Daten geladen werden
@@ -150,8 +154,16 @@ export async function GET(request: NextRequest) {
       },
       availableFields: DEFAULT_FELD_EINSTELLUNGEN.map((feld) => feld.name),
       spielplanZeitbloecke: normalizeSpielplanZeitbloecke(undefined, scheduleSettings),
+      schiedsrichterAnzeigeAktiv: true,
     }, { headers });
   }
+}
+
+function hideReferees(spiele: Spiel[]) {
+  return spiele.map((spiel) => ({
+    ...spiel,
+    schiedsrichter: null,
+  }));
 }
 
 function formatFallbackDatum(dateString: string) {
