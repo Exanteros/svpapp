@@ -12,12 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { applySpielplanTimingOverrides, getDuplicateFeldnamen, getDynamicSpielplanTimingProfiles, normalizeSpielplanTimingOverrides } from "@/lib/tournament";
+import { applySpielplanTimingOverrides, getDuplicateFeldnamen, getDynamicSpielplanTimingProfiles, normalizeSpielplanLeistungsgruppen, normalizeSpielplanTimingOverrides } from "@/lib/tournament";
 
 import { DangerZone } from "./danger-zone";
 import { formatDate } from "./format";
 import { ScheduleDragBoard } from "./schedule-drag-board";
-import type { Anmeldung, FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanTimingGruppe, SpielplanTimingOverrides, SpielplanZeitblock, TurnierEinstellungen } from "./types";
+import type { Anmeldung, FeldEinstellungen, FeldTagesEinstellungen, Spiel, SpielplanLeistungsgruppe, SpielplanTimingGruppe, SpielplanTimingOverrides, SpielplanZeitblock, TurnierEinstellungen } from "./types";
 import { TEAM_CATEGORIES } from "./types";
 
 interface SchedulePanelProps {
@@ -124,6 +124,10 @@ export function SchedulePanel({
       ? applySpielplanTimingOverrides(selectedSuggestedTimingProfile, timingOverrides)
       : null
   ), [selectedSuggestedTimingProfile, timingOverrides]);
+  const leistungsgruppen = useMemo(
+    () => normalizeLeistungsgruppenForAdmin(settings.spielplanLeistungsgruppen),
+    [settings.spielplanLeistungsgruppen]
+  );
 
   useEffect(() => {
     const nextFields = materializeFieldsForDays(feldEinstellungen, days);
@@ -361,6 +365,14 @@ export function SchedulePanel({
     setDraftTimingOverrides({});
     setSavedTimingOverridesSignature(JSON.stringify({}));
     void onSettingsPatch({ spielplanTimingProfil: profileId, spielplanTimingOverrides: {} });
+  }
+
+  function updateLeistungsgruppeField(groupId: SpielplanLeistungsgruppe["id"], feldId: string) {
+    const nextGroups = leistungsgruppen.map((group) => (
+      group.id === groupId ? { ...group, feldId } : group
+    ));
+
+    void onSettingsPatch({ spielplanLeistungsgruppen: nextGroups });
   }
 
   function handleSnapshotImportChange(event: ChangeEvent<HTMLInputElement>) {
@@ -643,6 +655,58 @@ export function SchedulePanel({
             >
               {saving ? "Speichert..." : "Felder speichern"}
             </Button>
+          </div>
+          <div className="mb-4 overflow-hidden rounded-[8px] border border-[#d9dec8] bg-white">
+            <div className="border-b border-[#e1e4d8] bg-[#f6f7f1] p-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-semibold">Mini/E-Leistungsgruppen auf Felder legen</h3>
+                <p className="!mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  Mini und E-Jugend werden beim Generieren in schwach/stark getrennt. Jede Gruppe bleibt auf dem hier ausgewählten Feld.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+              {leistungsgruppen.map((group) => {
+                const field = draftFields.find((candidate) => candidate.id === group.feldId);
+                const activeOnSaturday = field ? isFieldActiveOnDay(field, settings.turnierStartDatum) : false;
+
+                return (
+                  <div key={group.id} className="min-w-0 rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] p-3">
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-[#4f5d2f]">{group.label}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {group.kategorie} · {group.staerke}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 border-[#d9dec8] bg-white text-[#4f5d2f]">
+                        Gruppe
+                      </Badge>
+                    </div>
+                    <Label className="text-xs text-muted-foreground">Feld</Label>
+                    <Select value={group.feldId} onValueChange={(value) => updateLeistungsgruppeField(group.id, value)}>
+                      <SelectTrigger className="mt-1 h-9 min-w-0 bg-white [&>span]:truncate">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {draftFields.map((fieldOption) => (
+                          <SelectItem key={fieldOption.id} value={fieldOption.id}>
+                            {fieldOption.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="!mt-2 text-[11px] leading-5 text-muted-foreground">
+                      {field
+                        ? activeOnSaturday
+                          ? `${field.name} ist am Mini/E-Tag aktiv.`
+                          : `${field.name} ist am Mini/E-Tag aktuell nicht aktiv.`
+                        : "Bitte ein vorhandenes Feld auswählen."}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           <div className="grid min-w-0 gap-3 xl:grid-cols-2">
             {draftFields.map((field) => (
@@ -1253,4 +1317,8 @@ function normalizeTimeInput(value: string | undefined, fallback: string) {
 
 function normalizeTimingOverridesForAdmin(value: unknown): SpielplanTimingOverrides {
   return normalizeSpielplanTimingOverrides(value) as SpielplanTimingOverrides;
+}
+
+function normalizeLeistungsgruppenForAdmin(value: unknown): SpielplanLeistungsgruppe[] {
+  return normalizeSpielplanLeistungsgruppen(value) as SpielplanLeistungsgruppe[];
 }

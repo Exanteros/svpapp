@@ -9,6 +9,7 @@ import {
   getDefaultSpielplanZeitbloecke,
   getTournamentYear,
   normalizeFeldEinstellungen,
+  normalizeSpielplanLeistungsgruppen,
   normalizeSpielplanZeitbloecke,
   normalizeSpielplanTimingOverrides,
   normalizeSpielplanTimingProfil,
@@ -1243,6 +1244,7 @@ export function getAdminSettings() {
   `).all();
   let rawSpielplanZeitbloecke: unknown;
   let rawSpielplanTimingOverrides: unknown;
+  let rawSpielplanLeistungsgruppen: unknown;
 
   const result: any = {
     turnierName: TOURNAMENT_DEFAULTS.name,
@@ -1272,6 +1274,7 @@ export function getAdminSettings() {
     spielplanTimingProfil: 'standard',
     spielplanTimingOverrides: {},
     spielplanZeitbloecke: getDefaultSpielplanZeitbloecke(),
+    spielplanLeistungsgruppen: normalizeSpielplanLeistungsgruppen(undefined),
     anmeldungAktiv: true,
     spielplanStatus: 'draft' as SpielplanStatus,
     spielplanPublishedAt: null as string | null,
@@ -1367,6 +1370,13 @@ export function getAdminSettings() {
           rawSpielplanZeitbloecke = undefined;
         }
         break;
+      case 'spielplan_leistungsgruppen':
+        try {
+          rawSpielplanLeistungsgruppen = JSON.parse(setting.value);
+        } catch {
+          rawSpielplanLeistungsgruppen = undefined;
+        }
+        break;
       case 'anmeldung_aktiv':
         result.anmeldungAktiv = setting.value !== 'false';
         break;
@@ -1393,6 +1403,9 @@ export function getAdminSettings() {
   result.spielplanTimingProfil = normalizeSpielplanTimingProfil(result.spielplanTimingProfil);
   result.spielplanTimingOverrides = normalizeSpielplanTimingOverrides(
     rawSpielplanTimingOverrides ?? result.spielplanTimingOverrides
+  );
+  result.spielplanLeistungsgruppen = normalizeSpielplanLeistungsgruppen(
+    rawSpielplanLeistungsgruppen ?? result.spielplanLeistungsgruppen
   );
 
   return result;
@@ -1446,6 +1459,11 @@ export function saveAdminSettings(settings: any) {
       '27',
       'spielplan_zeitbloecke',
       JSON.stringify(normalizeSpielplanZeitbloecke(settings.spielplanZeitbloecke, scheduleSettings))
+    );
+    updateSetting.run(
+      '31',
+      'spielplan_leistungsgruppen',
+      JSON.stringify(normalizeSpielplanLeistungsgruppen(settings.spielplanLeistungsgruppen))
     );
     // Sicher speichern des Passkeys (in produktiver Umgebung sollte dieser gehasht werden)
     if (settings.adminPasskey) {

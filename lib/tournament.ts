@@ -86,6 +86,8 @@ const SCHEDULE_SKILL_SUFFIXES = new Set([
   'erfahren',
   'sehr erfahren',
   'leistung',
+  'schwach',
+  'stark',
   'standard',
   'standart',
 ]);
@@ -666,6 +668,18 @@ export interface SpielplanZeitblock {
   kategorien: string[];
 }
 
+export type SpielplanLeistungsgruppeId = 'mini-schwach' | 'mini-stark' | 'e-schwach' | 'e-stark';
+export type SpielplanLeistungsgruppeKategorie = 'Mini' | 'E-Jugend';
+export type SpielplanLeistungsgruppeStaerke = 'schwach' | 'stark';
+
+export interface SpielplanLeistungsgruppe {
+  id: SpielplanLeistungsgruppeId;
+  label: string;
+  kategorie: SpielplanLeistungsgruppeKategorie;
+  staerke: SpielplanLeistungsgruppeStaerke;
+  feldId: string;
+}
+
 export type PartialTournamentScheduleSettings = Partial<TournamentScheduleSettings>;
 
 export interface TournamentScoreVisibilitySettings extends PartialTournamentScheduleSettings {
@@ -727,6 +741,33 @@ export function getDefaultSpielplanZeitbloecke(
       ],
     },
   ];
+}
+
+export function getDefaultSpielplanLeistungsgruppen(): SpielplanLeistungsgruppe[] {
+  return [
+    { id: 'mini-schwach', label: 'Mini schwach', kategorie: 'Mini', staerke: 'schwach', feldId: 'feld1' },
+    { id: 'mini-stark', label: 'Mini stark', kategorie: 'Mini', staerke: 'stark', feldId: 'feld2' },
+    { id: 'e-schwach', label: 'E-Jugend schwach', kategorie: 'E-Jugend', staerke: 'schwach', feldId: 'feld3' },
+    { id: 'e-stark', label: 'E-Jugend stark', kategorie: 'E-Jugend', staerke: 'stark', feldId: 'feld4' },
+  ];
+}
+
+export function normalizeSpielplanLeistungsgruppen(value: unknown): SpielplanLeistungsgruppe[] {
+  const defaults = getDefaultSpielplanLeistungsgruppen();
+  const inputs = Array.isArray(value) ? value : [];
+
+  return defaults.map((fallback) => {
+    const input = inputs.find((item) => (
+      item &&
+      typeof item === 'object' &&
+      (item as Partial<SpielplanLeistungsgruppe>).id === fallback.id
+    )) as Partial<SpielplanLeistungsgruppe> | undefined;
+
+    return {
+      ...fallback,
+      feldId: isNonEmptyString(input?.feldId) ? input.feldId : fallback.feldId,
+    };
+  });
 }
 
 export function normalizeSpielplanZeitbloecke(

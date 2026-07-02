@@ -8,6 +8,7 @@ import {
   getTeamDisplayKey,
   getSpielzeitRegelForKategorie,
   normalizeFeldEinstellungen,
+  normalizeSpielplanLeistungsgruppen,
   normalizeSpielplanZeitbloecke,
   normalizeSpielplanTimingProfil,
   resolveFeldEinstellungenForDate,
@@ -18,6 +19,7 @@ import {
   type SpielplanTimingProfile,
   type SpielplanTimingOverrides,
   type SpielplanTimingProfil,
+  type SpielplanLeistungsgruppe,
   type SpielplanZeitblock,
   type TournamentScheduleSettings,
 } from './tournament';
@@ -60,6 +62,7 @@ interface TeamSlot {
   eJugendGender: EJugendGender | null;
   numberingCategory: string;
   numberingRank: number;
+  strengthSortRank: number;
   sourceIndex: number;
 }
 
@@ -68,6 +71,7 @@ interface GeneratorSettings extends PartialTournamentScheduleSettings {
   spielzeitenAutomatisch?: boolean;
   spielplanTimingProfil?: SpielplanTimingProfil;
   spielplanTimingOverrides?: SpielplanTimingOverrides;
+  spielplanLeistungsgruppen?: SpielplanLeistungsgruppe[];
   spielplanZeitbloecke?: SpielplanZeitblock[];
 }
 
@@ -78,6 +82,7 @@ interface GameRequest {
   fieldGroup: string;
   timing?: FeldTagesEinstellungen;
   timeWindow?: RequestTimeWindow;
+  preferredFieldId?: string;
   team1: string;
   team2: string;
   roundIndex: number;
@@ -196,6 +201,8 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
     useCategoryTimings: autoSpielzeiten,
     timingProfil,
     zeitbloecke,
+    leistungsgruppen: mergedSettings.spielplanLeistungsgruppen,
+    availableFieldIds: fieldSettings.map((field) => field.id),
   }));
   const slots = createScheduleSlots(fieldSettings, settings);
   const plannedGames = assignRefereesToGames(assignGamesToSlots(requests, slots, {
@@ -290,6 +297,8 @@ export function optimizeSpielzeitenForSchedule(params: SpielplanGenerationParams
     useCategoryTimings: true,
     timingProfil,
     zeitbloecke,
+    leistungsgruppen: mergedSettings.spielplanLeistungsgruppen,
+    availableFieldIds: optimizedFields.map((field) => field.id),
   }));
   const days = [settings.turnierStartDatum, settings.turnierEndDatum];
   const optimierung: SpielzeitOptimierung[] = [];
@@ -382,9 +391,13 @@ function createGameRequests(
     useCategoryTimings?: boolean;
     timingProfil?: SpielplanTimingProfile;
     zeitbloecke?: SpielplanZeitblock[];
+    leistungsgruppen?: SpielplanLeistungsgruppe[];
+    availableFieldIds?: string[];
   } = {}
 ) {
   const teamsByCategory = groupTeamsByCategory(anmeldungen);
+  const leistungsgruppen = normalizeSpielplanLeistungsgruppen(options.leistungsgruppen);
+  const availableFieldIds = new Set(options.availableFieldIds || []);
   const requests: GameRequest[] = [];
 
   for (const [kategorie, niveauGroups] of Object.entries(teamsByCategory).sort(([a], [b]) => a.localeCompare(b, 'de'))) {
@@ -403,6 +416,7 @@ function createGameRequests(
         fieldGroup: `${datum}:${kategorie}:${niveau}`,
         timing: options.useCategoryTimings ? getSpielzeitRegelForKategorie(kategorie, options.timingProfil) : undefined,
         timeWindow: getTimeWindowForCategory(kategorie, datum, options.zeitbloecke || []),
+        preferredFieldId: getPreferredFieldIdForLeistungsgruppe(kategorie, niveau, leistungsgruppen, availableFieldIds),
       };
       const categoryRequests = createRoundRobinRequests(sortedTeams, requestBase);
       requests.push(...expandRequestsForCategoryFill(categoryRequests, sortedTeams, kategorie, requestBase));
@@ -461,6 +475,42 @@ function createScheduleCategoryLabel(kategorie: string, niveau: string) {
   return `${kategorie} (${niveau})`;
 }
 
+function getPreferredFieldIdForLeistungsgruppe(
+  kategorie: string,
+  niveau: string,
+  leistungsgruppen: SpielplanLeistungsgruppe[],
+  availableFieldIds: Set<string>
+) {
+  const groupId = getLeistungsgruppeId(kategorie, niveau);
+  const group = groupId ? leistungsgruppen.find((item) => item.id === groupId) : null;
+
+  if (!group?.feldId || !availableFieldIds.has(group.feldId)) {
+    return undefined;
+  }
+
+  return group.feldId;
+}
+
+function getLeistungsgruppeId(kategorie: string, niveau: string) {
+  const normalizedCategory = normalizeCategoryName(kategorie);
+  const normalizedNiveau = normalizeHeader(niveau);
+  const staerke = normalizedNiveau.includes('stark') ? 'stark' : normalizedNiveau.includes('schwach') ? 'schwach' : null;
+
+  if (!staerke) {
+    return null;
+  }
+
+  if (isMiniCategory(normalizedCategory)) {
+    return `mini-${staerke}` as const;
+  }
+
+  if (isEJugendCategory(normalizedCategory)) {
+    return `e-${staerke}` as const;
+  }
+
+  return null;
+}
+
 function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
   const teamsByCategory: Record<string, Record<string, TeamEntry[]>> = {};
   const teamSlots: TeamSlot[] = [];
@@ -480,8 +530,9 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
         continue;
       }
 
-      const kategorie = getSchedulingCategory(team.kategorie);
-      const niveau = normalizeSchedulingSkill(team.spielstaerke);
+      const leistungsgruppe = getMiniELeistungsgruppe(team.kategorie, team.spielstaerke);
+      const kategorie = leistungsgruppe?.kategorie ?? getSchedulingCategory(team.kategorie);
+      const niveau = leistungsgruppe?.niveau ?? normalizeSchedulingSkill(team.spielstaerke);
 
       for (let index = 0; index < Math.floor(teamCount); index++) {
         teamSlots.push({
@@ -492,11 +543,14 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
           eJugendGender: getEJugendGender(team.kategorie),
           numberingCategory: getTeamNumberingCategory(team.kategorie),
           numberingRank: getTeamNumberingRank(team.kategorie, team.spielstaerke),
+          strengthSortRank: getTeamStrengthSortRank(team.kategorie, team.spielstaerke),
           sourceIndex: sourceIndex++,
         });
       }
     }
   }
+
+  assignBalancedMiniELeistungsgruppen(teamSlots);
 
   const teamNumbers = createTeamNumbersByStrength(teamSlots);
 
@@ -540,9 +594,60 @@ function createTeamNumbersByStrength(teamSlots: TeamSlot[]) {
 
 function compareTeamNumberingSlots(first: TeamSlot, second: TeamSlot) {
   return first.numberingRank - second.numberingRank
+    || getNumberingNiveauRank(first.niveau) - getNumberingNiveauRank(second.niveau)
     || first.schedulingCategory.localeCompare(second.schedulingCategory, 'de', { numeric: true, sensitivity: 'base' })
-    || first.niveau.localeCompare(second.niveau, 'de', { numeric: true, sensitivity: 'base' })
     || first.sourceIndex - second.sourceIndex;
+}
+
+function assignBalancedMiniELeistungsgruppen(teamSlots: TeamSlot[]) {
+  const slotsByCategory = new Map<string, TeamSlot[]>();
+
+  for (const slot of teamSlots) {
+    if (!isMiniCategory(slot.schedulingCategory) && !isEJugendCategory(slot.schedulingCategory)) {
+      continue;
+    }
+
+    const slots = slotsByCategory.get(slot.schedulingCategory) || [];
+
+    slots.push(slot);
+    slotsByCategory.set(slot.schedulingCategory, slots);
+  }
+
+  slotsByCategory.forEach((slots) => {
+    if (slots.length < 4) {
+      slots.forEach((slot) => {
+        slot.niveau = 'Stark';
+      });
+      return;
+    }
+
+    const sortedSlots = [...slots].sort(compareTeamSlotsByStrength);
+    const strongCount = Math.ceil(sortedSlots.length / 2);
+
+    sortedSlots.forEach((slot, index) => {
+      slot.niveau = index < strongCount ? 'Stark' : 'Schwach';
+    });
+  });
+}
+
+function compareTeamSlotsByStrength(first: TeamSlot, second: TeamSlot) {
+  return first.strengthSortRank - second.strengthSortRank
+    || first.numberingRank - second.numberingRank
+    || first.sourceIndex - second.sourceIndex;
+}
+
+function getNumberingNiveauRank(niveau: string) {
+  const normalized = normalizeHeader(niveau);
+
+  if (normalized.includes('stark') || normalized.includes('leistung') || normalized.includes('standard')) {
+    return 1;
+  }
+
+  if (normalized.includes('schwach') || normalized.includes('anfaeng') || normalized.includes('anfang')) {
+    return 2;
+  }
+
+  return 3;
 }
 
 function getTeamNumberingKey(club: string, categoryName: string) {
@@ -555,7 +660,115 @@ function getTeamNumberingRank(categoryName: string, skillLevel: string | null | 
     ?? 2;
 }
 
+function getTeamStrengthSortRank(categoryName: string, skillLevel: string | null | undefined) {
+  return getSkillStrengthSortRank(skillLevel)
+    ?? getMiniCategoryNumberingRank(categoryName)
+    ?? 2;
+}
+
+function getMiniELeistungsgruppe(categoryName: string, skillLevel: string | null | undefined) {
+  const normalizedCategory = normalizeCategoryName(categoryName);
+  const isMini = isMiniCategory(normalizedCategory);
+  const isEJugend = isEJugendCategory(normalizedCategory);
+
+  if (!isMini && !isEJugend) {
+    return null;
+  }
+
+  const labelGroup = getSkillLeistungsgruppe(skillLevel);
+  const strengthRank = getNumericSkillNumberingRank(skillLevel)
+    ?? getMiniCategoryNumberingRank(categoryName)
+    ?? 3;
+  const isStrong = labelGroup ? labelGroup === 'stark' : strengthRank <= 2;
+
+  return {
+    kategorie: isMini ? 'Mini' : 'E-Jugend',
+    niveau: isStrong ? 'Stark' : 'Schwach',
+  };
+}
+
+function getSkillLeistungsgruppe(value: string | null | undefined): 'schwach' | 'stark' | null {
+  const normalized = normalizeHeader(String(value ?? ''));
+
+  if (!normalized || /[1-3]/.test(normalized)) {
+    return null;
+  }
+
+  if (
+    normalized.includes('anfaeng') ||
+    normalized.includes('anfang') ||
+    normalized.includes('einsteiger')
+  ) {
+    return 'schwach';
+  }
+
+  if (
+    normalized.includes('leistung')
+    || normalized.includes('stark')
+    || normalized.includes('standard')
+    || normalized.includes('standart')
+    || normalized.includes('fortgeschritten')
+    || normalized.includes('erfahren')
+  ) {
+    return 'stark';
+  }
+
+  return null;
+}
+
+function getNumericSkillNumberingRank(value: string | null | undefined) {
+  const raw = String(value ?? '').trim();
+  const normalized = normalizeHeader(raw);
+
+  if (/^[1-3]$/.test(raw)) {
+    return Number(raw);
+  }
+
+  const numericSkill = normalized.match(/[1-3]/);
+  return numericSkill ? Number(numericSkill[0]) : null;
+}
+
 function getSkillNumberingRank(value: string | null | undefined) {
+  const raw = String(value ?? '').trim();
+  const normalized = normalizeHeader(raw);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[1-3]$/.test(raw)) {
+    return Number(raw) <= 2 ? 1 : 2;
+  }
+
+  const numericSkill = normalized.match(/[1-3]/);
+  if (numericSkill) {
+    return Number(numericSkill[0]) <= 2 ? 1 : 2;
+  }
+
+  if (['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) || normalized.includes('anfaeng')) {
+    return 2;
+  }
+
+  if (
+    ['standard', 'standart', 'fortgeschritten', 'fortgeschrittene', 'erfahren', 'mittel', 'medium', 'advanced'].includes(normalized) ||
+    normalized.includes('fortgeschritten') ||
+    normalized.includes('erfahren')
+  ) {
+    return 1;
+  }
+
+  if (
+    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
+    normalized.includes('leistung') ||
+    normalized.includes('sehrerfahren')
+  ) {
+    return 1;
+  }
+
+  return null;
+}
+
+function getSkillStrengthSortRank(value: string | null | undefined) {
   const raw = String(value ?? '').trim();
   const normalized = normalizeHeader(raw);
 
@@ -572,7 +785,12 @@ function getSkillNumberingRank(value: string | null | undefined) {
     return Number(numericSkill[0]);
   }
 
-  if (['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) || normalized.includes('anfaeng')) {
+  if (
+    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
+    normalized.includes('leistung') ||
+    normalized.includes('sehrerfahren') ||
+    normalized.includes('sehrstark')
+  ) {
     return 1;
   }
 
@@ -585,9 +803,9 @@ function getSkillNumberingRank(value: string | null | undefined) {
   }
 
   if (
-    ['leistung', 'leistungsstark', 'stark', 'competitive', 'sehrerfahren', 'sehrstark'].includes(normalized) ||
-    normalized.includes('leistung') ||
-    normalized.includes('sehrerfahren')
+    ['anf', 'anfaenger', 'anfanger', 'beginner', 'einsteiger'].includes(normalized) ||
+    normalized.includes('anfaeng') ||
+    normalized.includes('anfang')
   ) {
     return 3;
   }
@@ -615,14 +833,14 @@ function getTeamNameCategory(categoryName: string) {
 
 function createRoundRobinRequests(
   teams: TeamEntry[],
-  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow'>
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
 ) {
   return createPairingCandidates(teams, requestBase);
 }
 
 function createPairingCandidates(
   teams: TeamEntry[],
-  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow'>
+  requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'kategorie' | 'fieldGroup' | 'timing' | 'timeWindow' | 'preferredFieldId'>
 ) {
   const requests: GameRequest[] = [];
 
@@ -1144,11 +1362,19 @@ function requestCanUseSlot(
     && requestFitsInSlot(slot, request)
     && requestFitsTimeWindow(slot, request)
     && requestStartsOnKickoffGrid(slot, request)
-    && categoryAllowedOnField(slot.feld, request.baseKategorie, request.datum)
+    && requestAllowedOnField(slot, request)
     && fieldCanHostAt(fieldSchedule.get(getFieldScheduleKey(slot)) || [], slot, request)
     && teamsAvoidImmediateFollowUp(slot, request, teamSchedule)
     && teamsCanPlayAt(slot, request, teamSchedule)
   );
+}
+
+function requestAllowedOnField(slot: ScheduleSlot, request: GameRequest) {
+  if (request.preferredFieldId) {
+    return slot.feld.id === request.preferredFieldId && fieldActiveOnDate(slot.feld, request.datum);
+  }
+
+  return categoryAllowedOnField(slot.feld, request.baseKategorie, request.datum);
 }
 
 function getRequestSchedulingScore(

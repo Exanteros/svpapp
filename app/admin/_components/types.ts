@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { TOURNAMENT_DEFAULTS } from "@/lib/tournament";
+import { TOURNAMENT_DEFAULTS, getDefaultSpielplanLeistungsgruppen } from "@/lib/tournament";
 
 export type AdminSectionId =
   | "overview"
@@ -79,6 +79,14 @@ export interface SpielplanZeitblock {
   kategorien: string[];
 }
 
+export interface SpielplanLeistungsgruppe {
+  id: "mini-schwach" | "mini-stark" | "e-schwach" | "e-stark";
+  label: string;
+  kategorie: "Mini" | "E-Jugend";
+  staerke: "schwach" | "stark";
+  feldId: string;
+}
+
 export type SpielplanTimingGruppe = "miniE" | "d" | "cba";
 export type SpielplanTimingOverrides = Partial<Record<SpielplanTimingGruppe, Partial<FeldTagesEinstellungen>>>;
 
@@ -118,6 +126,7 @@ export interface TurnierEinstellungen {
   spielplanTimingProfil: "kompakt" | "standard" | "lang";
   spielplanTimingOverrides: SpielplanTimingOverrides;
   spielplanZeitbloecke: SpielplanZeitblock[];
+  spielplanLeistungsgruppen: SpielplanLeistungsgruppe[];
   spielplanStatus: SpielplanStatus;
   spielplanPublishedAt?: string | null;
 }
@@ -240,6 +249,7 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   spielzeitenAutomatisch: true,
   spielplanTimingProfil: "standard",
   spielplanTimingOverrides: {},
+  spielplanLeistungsgruppen: getDefaultSpielplanLeistungsgruppen(),
   spielplanZeitbloecke: [
     {
       id: "samstag-mini-e",

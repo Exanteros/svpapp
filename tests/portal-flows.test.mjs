@@ -78,6 +78,13 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /normalizeSpielplanTimingProfil/);
   assert.match(generator, /getDynamicSpielplanTimingProfiles/);
   assert.match(generator, /applySpielplanTimingOverrides/);
+  assert.match(generator, /normalizeSpielplanLeistungsgruppen/);
+  assert.match(generator, /preferredFieldId/);
+  assert.match(generator, /getPreferredFieldIdForLeistungsgruppe/);
+  assert.match(generator, /getMiniELeistungsgruppe\(team\.kategorie, team\.spielstaerke\)/);
+  assert.match(generator, /assignBalancedMiniELeistungsgruppen\(teamSlots\)/);
+  assert.match(generator, /const strongCount = Math\.ceil\(sortedSlots\.length \/ 2\)/);
+  assert.match(generator, /requestAllowedOnField\(slot, request\)/);
   assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
   assert.match(generator, /providerCanWhistleGame\(provider, game\)/);
@@ -87,10 +94,12 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /getProviderLoadKey\(provider, game\)/);
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
   assert.match(tournament, /normalizeSpielplanTimingOverrides/);
+  assert.match(tournament, /normalizeSpielplanLeistungsgruppen/);
   assert.match(tournament, /applySpielplanTimingOverrides/);
   assert.match(tournament, /getDuplicateFeldnamen/);
   assert.match(tournament, /capacityMinutes/);
   assert.match(db, /spielplan_timing_overrides/);
+  assert.match(db, /spielplan_leistungsgruppen/);
   assert.match(db, /schiedsrichter/);
   assert.match(db, /schiedsrichterAnzeigeAktiv/);
   assert.match(db, /schiedsrichter_anzeige_aktiv/);
@@ -108,6 +117,7 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(schedulePanel, /Exportieren/);
   assert.match(schedulePanel, /Importieren/);
   assert.match(adminTypes, /schiedsrichterAnzeigeAktiv: boolean/);
+  assert.match(adminTypes, /spielplanLeistungsgruppen: SpielplanLeistungsgruppe\[\]/);
   assert.match(db, /updateSpielFeldnamen/);
   assert.match(fieldSettingsRoute, /getFieldRenames/);
   assert.match(fieldSettingsRoute, /duplicateFeldnamen/);
@@ -116,6 +126,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(adminPage, /renameSpielFields/);
   assert.match(liveRoute, /applySpielplanTimingOverrides/);
   assert.match(schedulePanel, /Spielzeit-Vorschlag auswählen/);
+  assert.match(schedulePanel, /Mini\/E-Leistungsgruppen auf Felder legen/);
+  assert.match(schedulePanel, /updateLeistungsgruppeField/);
   assert.match(schedulePanel, /Spielzeiten feinjustieren/);
   assert.match(schedulePanel, /Spielzeiten speichern & generieren/);
   assert.match(schedulePanel, /Feldnamen doppelt/);
@@ -136,13 +148,35 @@ test('public schedule can be filtered by visible team names and youth', async ()
   const spielplanPage = await source('app/spielplan/page.tsx');
 
   assert.match(spielplanPage, /const \[selectedTeam, setSelectedTeam\] = useState\("alle"\)/);
+  assert.match(spielplanPage, /const \[selectedCategory, setSelectedCategory\] = useState\("alle"\)/);
+  assert.match(spielplanPage, /const \[selectedStatus, setSelectedStatus\] = useState<StatusFilter>\("alle"\)/);
+  assert.match(spielplanPage, /const \[selectedKickoff, setSelectedKickoff\] = useState\("alle"\)/);
+  assert.match(spielplanPage, /const \[selectedReferee, setSelectedReferee\] = useState<RefereeFilter>\("alle"\)/);
   assert.match(spielplanPage, /getTeamFilterOptions\(allGames, teamDisplayNames\)/);
+  assert.match(spielplanPage, /getCategoryFilterOptions\(allGames\)/);
+  assert.match(spielplanPage, /getKickoffFilterOptions\(activeDayGames\)/);
   assert.match(spielplanPage, /gameMatchesTeamFilter\(spiel, selectedTeam, teamDisplayNames\)/);
+  assert.match(spielplanPage, /gameMatchesCategoryFilter\(spiel, selectedCategory\)/);
+  assert.match(spielplanPage, /gameMatchesStatusFilter\(spiel, selectedStatus, nextGameIds\)/);
+  assert.match(spielplanPage, /gameMatchesRefereeFilter\(spiel, selectedReferee\)/);
   assert.match(spielplanPage, /getTeamFilterValue\(teamName, category, displayNameMap\)/);
   assert.match(spielplanPage, /formatScheduleCategoryLabel\(category\)/);
   assert.match(spielplanPage, /\$\{formatTeamDisplayName\(teamName, displayNameMap\)\} · \$\{formatScheduleCategoryLabel\(category\)\}/);
   assert.match(spielplanPage, /Alle Mannschaften/);
+  assert.match(spielplanPage, /Alle Jugenden/);
+  assert.match(spielplanPage, /Alle Status/);
+  assert.match(spielplanPage, /Alle Zeiten/);
+  assert.match(spielplanPage, /Alle Schiris/);
+  assert.match(spielplanPage, /Filter zurücksetzen/);
+  assert.match(spielplanPage, /SheetContent side="bottom"/);
+  assert.match(spielplanPage, /md:hidden/);
+  assert.match(spielplanPage, /md:grid/);
+  assert.match(spielplanPage, /activeFilterChips/);
   assert.match(spielplanPage, /aria-label="Mannschaft filtern"/);
+  assert.match(spielplanPage, /aria-label="Jugend filtern"/);
+  assert.match(spielplanPage, /aria-label="Status filtern"/);
+  assert.match(spielplanPage, /aria-label="Anpfiff filtern"/);
+  assert.match(spielplanPage, /aria-label="Schiedsrichter filtern"/);
 });
 
 test('result saving and public score visibility remain guarded', async () => {
@@ -223,6 +257,8 @@ test('public team names are numbered only within the same visible category', asy
   assert.match(tournament, /return 'wE'/);
   assert.match(generator, /createTeamNumbersByStrength/);
   assert.match(generator, /getTeamNumberingRank\(team\.kategorie, team\.spielstaerke\)/);
+  assert.match(generator, /getNumberingNiveauRank\(first\.niveau\)/);
+  assert.match(generator, /getSkillStrengthSortRank/);
   assert.match(generator, /getMiniCategoryNumberingRank/);
   assert.match(generator, /getSkillNumberingRank/);
   assert.doesNotMatch(generator, /getNextTeamNumber/);
