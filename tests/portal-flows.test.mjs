@@ -289,6 +289,8 @@ test('public team names are numbered only within the same visible category', asy
     assert.doesNotMatch(file, /createTeamDisplayNameMap\(.*flatMap\(\(spiel\) => \[spiel\.team1, spiel\.team2\]\)/s);
   }
   assert.match(refereeCards, /formatRefereeCardTeamName\(spiel\.team1, teamDisplayNames\)/);
+  assert.match(refereeCards, /drawCategoryLine/);
+  assert.match(refereeCards, /formatScheduleCategoryLabel\(spiel\.kategorie\)/);
   assert.match(refereeCards, /drawRefereeLine/);
 });
 

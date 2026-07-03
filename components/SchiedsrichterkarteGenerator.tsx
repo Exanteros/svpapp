@@ -9,7 +9,12 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createTeamDisplayNameMapFromGames, formatTeamDisplayName, type TeamDisplayNameMap } from "@/lib/tournament";
+import {
+  createTeamDisplayNameMapFromGames,
+  formatScheduleCategoryLabel,
+  formatTeamDisplayName,
+  type TeamDisplayNameMap,
+} from "@/lib/tournament";
 
 interface Spiel {
   id: string;
@@ -419,14 +424,15 @@ function drawCard(
   const qrX = x + cardWidth - qrSize - size(2.5);
   const qrY = y + size(QR_Y);
   const infoWidth = cardWidth - qrSize - size(9);
-  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), x + size(2.5), y + size(10.4));
+  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), x + size(2.5), y + size(10.1));
+  drawCategoryLine(doc, x + size(2.5), y + size(12.4), infoWidth, formatScheduleCategoryLabel(spiel.kategorie), scale);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(size(5.8));
-  doc.text(trimText(doc, spiel.feld, infoWidth), x + size(2.5), y + size(12.9));
+  doc.setFontSize(size(5.1));
+  doc.text(trimText(doc, spiel.feld, infoWidth), x + size(2.5), y + size(14.7));
   const referee = spiel.schiedsrichter?.trim()
     ? formatRefereeCardTeamName(spiel.schiedsrichter, teamDisplayNames)
     : "Schiri offen";
-  drawRefereeLine(doc, x + size(2.5), y + size(15.2), infoWidth, referee, scale);
+  drawRefereeLine(doc, x + size(2.5), y + size(17), infoWidth, referee, scale);
 
   doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
   doc.setFont("helvetica", "bold");
@@ -487,6 +493,22 @@ function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: 
   const fittedTeamName = fitTextToWidth(doc, teamName, teamNameMaxWidth, 7.4 * scale, 4.6 * scale);
   doc.setFontSize(fittedTeamName.fontSize);
   doc.text(fittedTeamName.text, teamNameX, y + 4.95 * scale);
+}
+
+function drawCategoryLine(doc: jsPDF, x: number, y: number, width: number, category: string, scale: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4 * scale);
+  const label = "Klasse:";
+  doc.text(label, x, y);
+
+  const gap = 1.1 * scale;
+  const categoryX = x + doc.getTextWidth(label) + gap;
+  const categoryWidth = width - (categoryX - x);
+
+  doc.setFont("helvetica", "bold");
+  const fittedCategory = fitTextToWidth(doc, category, categoryWidth, 4.8 * scale, 3.6 * scale);
+  doc.setFontSize(fittedCategory.fontSize);
+  doc.text(fittedCategory.text, categoryX, y);
 }
 
 function drawRefereeLine(doc: jsPDF, x: number, y: number, width: number, referee: string, scale: number) {
