@@ -128,6 +128,9 @@ export function SchedulePanel({
     () => normalizeLeistungsgruppenForAdmin(settings.spielplanLeistungsgruppen),
     [settings.spielplanLeistungsgruppen]
   );
+  const schiriTeamMaxSpiele = clampInteger(settings.schiriTeamMaxSpiele ?? 5, 0, 20);
+  const schiriSvpAnteil = clampInteger(settings.schiriSvpAnteil ?? 40, 0, 100);
+  const schiriExternAnteil = 100 - schiriSvpAnteil;
 
   useEffect(() => {
     const nextFields = materializeFieldsForDays(feldEinstellungen, days);
@@ -386,6 +389,21 @@ export function SchedulePanel({
 
   function resetTimingOverrides() {
     setDraftTimingOverrides({});
+  }
+
+  function updateSchiriDistribution(
+    key: "schiriTeamMaxSpiele" | "schiriSvpAnteil",
+    value: string,
+    min: number,
+    max: number
+  ) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+      return;
+    }
+
+    void onSettingsPatch({ [key]: clampInteger(numericValue, min, max) });
   }
 
   function updateTimingOverride(
@@ -976,6 +994,86 @@ export function SchedulePanel({
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 overflow-hidden rounded-[8px] border border-[#d9dec8] bg-white">
+            <div className="border-b border-[#e1e4d8] bg-[#f6f7f1] p-4">
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SlidersHorizontal className="size-4 text-[#5e6d35]" />
+                    <h3 className="text-sm font-semibold">Schiri-Verteilung</h3>
+                  </div>
+                  <p className="!mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                    Externe Mannschafts-Schiris werden begrenzt, der eingestellte SVP-Anteil wird gleichmäßig über den Spielplan verteilt.
+                  </p>
+                </div>
+                <Badge variant="outline" className="w-fit border-[#d9dec8] bg-white text-[#4f5d2f]">
+                  SVP {schiriSvpAnteil}%
+                </Badge>
+              </div>
+            </div>
+            <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] p-3">
+                  <Label htmlFor="schiri-team-max" className="text-xs text-muted-foreground">
+                    Externe Mannschaften
+                  </Label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      id="schiri-team-max"
+                      type="number"
+                      min={0}
+                      max={20}
+                      value={schiriTeamMaxSpiele}
+                      disabled={saving}
+                      onChange={(event) => updateSchiriDistribution("schiriTeamMaxSpiele", event.target.value, 0, 20)}
+                      className="h-9 max-w-24 bg-white"
+                    />
+                    <span className="text-sm text-muted-foreground">Spiele je Team max.</span>
+                  </div>
+                </div>
+                <div className="rounded-[8px] border border-[#e1e4d8] bg-[#fbfbf8] p-3">
+                  <Label htmlFor="schiri-svp-share" className="text-xs text-muted-foreground">
+                    SVP Schiri Team
+                  </Label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      id="schiri-svp-share"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={schiriSvpAnteil}
+                      disabled={saving}
+                      onChange={(event) => updateSchiriDistribution("schiriSvpAnteil", event.target.value, 0, 100)}
+                      className="h-9 max-w-24 bg-white"
+                    />
+                    <span className="text-sm text-muted-foreground">% Mindestanteil</span>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <div className="flex h-12 overflow-hidden rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1]">
+                  <div
+                    className="flex items-center justify-center overflow-hidden bg-[#e8eef9] px-2 text-xs font-semibold text-[#28446f]"
+                    style={{ width: `${schiriExternAnteil}%` }}
+                    title={`Externe Mannschaften: ${schiriExternAnteil}%`}
+                  >
+                    {schiriExternAnteil >= 10 ? `${schiriExternAnteil}%` : null}
+                  </div>
+                  <div
+                    className="flex items-center justify-center overflow-hidden bg-[#edf3df] px-2 text-xs font-semibold text-[#4f5d2f]"
+                    style={{ width: `${schiriSvpAnteil}%` }}
+                    title={`SVP Schiri Team: ${schiriSvpAnteil}%`}
+                  >
+                    {schiriSvpAnteil >= 10 ? `${schiriSvpAnteil}%` : null}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>Extern</span>
+                  <span>SVP</span>
+                </div>
+              </div>
+            </div>
+          </div>
           {autoSpielzeiten && (
             <div className="mb-4 rounded-[8px] border border-[#d9dec8] bg-white p-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -1321,4 +1419,14 @@ function normalizeTimingOverridesForAdmin(value: unknown): SpielplanTimingOverri
 
 function normalizeLeistungsgruppenForAdmin(value: unknown): SpielplanLeistungsgruppe[] {
   return normalizeSpielplanLeistungsgruppen(value) as SpielplanLeistungsgruppe[];
+}
+
+function clampInteger(value: unknown, min: number, max: number) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return min;
+  }
+
+  return Math.max(min, Math.min(max, Math.floor(numericValue)));
 }

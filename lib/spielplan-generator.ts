@@ -71,6 +71,8 @@ interface TeamSlot {
 interface GeneratorSettings extends PartialTournamentScheduleSettings {
   anzahlFelder?: number;
   spielzeitenAutomatisch?: boolean;
+  schiriTeamMaxSpiele?: number;
+  schiriSvpAnteil?: number;
   spielplanTimingProfil?: SpielplanTimingProfil;
   spielplanTimingOverrides?: SpielplanTimingOverrides;
   spielplanLeistungsgruppen?: SpielplanLeistungsgruppe[];
@@ -144,7 +146,8 @@ interface PlannedGameWindow {
 type PlannedSpiel = Omit<GeneratedSpiel, 'id' | 'status'>;
 type EJugendGender = 'gemischt' | 'maennlich' | 'weiblich';
 
-const TEAM_REFEREE_MAX_ASSIGNMENTS = 7;
+const DEFAULT_TEAM_REFEREE_MAX_ASSIGNMENTS = 5;
+const DEFAULT_SVP_REFEREE_SHARE = 40;
 const FALLBACK_SVP_REFEREE_LABEL = 'SVP Schiri Team';
 
 export interface GeneratedSpiel {
@@ -227,7 +230,7 @@ export function generateSpielplan(params: SpielplanGenerationParams = {}): Gener
   const slots = createScheduleSlots(fieldSettings, settings);
   const plannedGames = assignRefereesToGames(assignGamesToSlots(requests, slots, {
     allowUnplanned: autoSpielzeiten,
-  }), anmeldungen, timingProfil);
+  }), anmeldungen, timingProfil, mergedSettings);
 
   if (params.replaceExisting) {
     const createdGames = [];
@@ -278,7 +281,7 @@ export function assignSchiedsrichterToExistingSpielplan(
   const anmeldungen = getAllAnmeldungen() as AnmeldungRow[];
   const timingProfil = getGeneratorTimingProfile(anmeldungen, settings, timingProfilId, zeitbloecke, fieldSettings);
   const existingSpiele = getSpielplan() as GeneratedSpiel[];
-  const assignedSpiele = assignRefereesToGames(existingSpiele, anmeldungen, timingProfil);
+  const assignedSpiele = assignRefereesToGames(existingSpiele, anmeldungen, timingProfil, mergedSettings);
   let updated = 0;
 
   for (const spiel of assignedSpiele) {
@@ -1417,16 +1420,21 @@ function assignGamesToSlotsResult(requests: GameRequest[], slots: ScheduleSlot[]
 function assignRefereesToGames<T extends PlannedSpiel>(
   plannedGames: T[],
   anmeldungen: AnmeldungRow[],
-  timingProfil: SpielplanTimingProfile
+  timingProfil: SpielplanTimingProfile,
+  settings: Pick<GeneratorSettings, 'schiriTeamMaxSpiele' | 'schiriSvpAnteil'> = {}
 ): Array<T & { schiedsrichter: string | null }> {
-  const providers = createRefereeProviders(anmeldungen);
+  const teamRefereeMaxAssignments = normalizeTeamRefereeMaxAssignments(settings.schiriTeamMaxSpiele);
+  const svpRefereeShare = normalizeSvpRefereeShare(settings.schiriSvpAnteil);
+  const providers = createRefereeProviders(anmeldungen, teamRefereeMaxAssignments);
   const teamProviders = providers.filter((provider) => !provider.isSvp);
   const svpProvider = providers.find((provider) => provider.isSvp) || createSvpRefereeProvider();
 
   const providerBusy = new Map<string, PlannedGameWindow[]>();
   const providerLoads = new Map<string, number>();
+  const orderedGames = [...plannedGames].sort(comparePlannedGames);
+  let svpAssignments = 0;
 
-  return [...plannedGames].sort(comparePlannedGames).map((game) => {
+  return orderedGames.map((game, index) => {
     const window = getPlannedGameWindow(game, timingProfil);
     const candidates = teamProviders
       .filter((provider) =>
@@ -1437,7 +1445,9 @@ function assignRefereesToGames<T extends PlannedSpiel>(
       )
       .sort((a, b) => getProviderSchedulingScore(a, providerLoads, game) - getProviderSchedulingScore(b, providerLoads, game)
         || a.label.localeCompare(b.label, 'de'));
-    const provider = candidates[0] || svpProvider;
+    const provider = shouldAssignSvpReferee(index, svpAssignments, svpRefereeShare)
+      ? svpProvider
+      : candidates[0] || svpProvider;
 
     const busyEntries = providerBusy.get(provider.key) || [];
     const loadKey = getProviderLoadKey(provider, game);
@@ -1445,6 +1455,9 @@ function assignRefereesToGames<T extends PlannedSpiel>(
     busyEntries.push(window);
     providerBusy.set(provider.key, busyEntries);
     providerLoads.set(loadKey, (providerLoads.get(loadKey) || 0) + 1);
+    if (provider.isSvp) {
+      svpAssignments += 1;
+    }
 
     return {
       ...game,
@@ -1453,7 +1466,7 @@ function assignRefereesToGames<T extends PlannedSpiel>(
   }).sort(comparePlannedGames);
 }
 
-function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
+function createRefereeProviders(anmeldungen: AnmeldungRow[], teamRefereeMaxAssignments: number) {
   const slots = createTeamSlots(anmeldungen);
   const teamNumbers = createTeamNumbersByStrength(slots);
   const svpLabel = getSvpRefereeLabel(slots);
@@ -1476,7 +1489,7 @@ function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
       key: `${normalizeRefereeKey(teamName)}:${slot.sourceIndex}`,
       crewCount: 1,
       isSvp: false,
-      maxAssignments: TEAM_REFEREE_MAX_ASSIGNMENTS,
+      maxAssignments: teamRefereeMaxAssignments,
       categoryKeys: [categoryKey],
       matchKeys: Array.from(new Set([
         normalizeRefereeKey(teamName),
@@ -1507,6 +1520,41 @@ function createSvpRefereeProvider(label = FALLBACK_SVP_REFEREE_LABEL): RefereePr
     categoryKeys: [],
     matchKeys: [],
   };
+}
+
+function normalizeTeamRefereeMaxAssignments(value: unknown) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_TEAM_REFEREE_MAX_ASSIGNMENTS;
+  }
+
+  return Math.max(0, Math.min(20, Math.floor(numericValue)));
+}
+
+function normalizeSvpRefereeShare(value: unknown) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_SVP_REFEREE_SHARE;
+  }
+
+  return Math.max(0, Math.min(100, Math.floor(numericValue)));
+}
+
+function shouldAssignSvpReferee(gameIndex: number, currentSvpAssignments: number, svpRefereeShare: number) {
+  if (svpRefereeShare <= 0) {
+    return false;
+  }
+
+  if (svpRefereeShare >= 100) {
+    return true;
+  }
+
+  const gamesIncludingCurrent = gameIndex + 1;
+  const targetSvpAssignments = Math.ceil((gamesIncludingCurrent * svpRefereeShare) / 100);
+
+  return currentSvpAssignments < targetSvpAssignments;
 }
 
 function getProviderSchedulingScore(provider: RefereeProvider, providerLoads: Map<string, number>, game: PlannedSpiel) {

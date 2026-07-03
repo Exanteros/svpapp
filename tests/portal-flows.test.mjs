@@ -93,8 +93,12 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /requestKeepsTeamLoadUnderLimit\(request, teamSchedule\)/);
   assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
-  assert.match(generator, /TEAM_REFEREE_MAX_ASSIGNMENTS\s*=\s*7/);
+  assert.match(generator, /DEFAULT_TEAM_REFEREE_MAX_ASSIGNMENTS\s*=\s*5/);
+  assert.match(generator, /DEFAULT_SVP_REFEREE_SHARE\s*=\s*40/);
   assert.match(generator, /FALLBACK_SVP_REFEREE_LABEL\s*=\s*'SVP Schiri Team'/);
+  assert.match(generator, /shouldAssignSvpReferee/);
+  assert.match(generator, /normalizeTeamRefereeMaxAssignments/);
+  assert.match(generator, /normalizeSvpRefereeShare/);
   assert.match(generator, /createTeamSlots\(anmeldungen\)/);
   assert.match(generator, /createSvpRefereeProvider\(svpLabel\)/);
   assert.match(generator, /providerHasAssignmentCapacity\(provider, providerLoads, game\)/);
@@ -114,6 +118,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(db, /schiedsrichter/);
   assert.match(db, /schiedsrichterAnzeigeAktiv/);
   assert.match(db, /schiedsrichter_anzeige_aktiv/);
+  assert.match(db, /schiri_team_max_spiele/);
+  assert.match(db, /schiri_svp_anteil/);
   assert.match(db, /replaceSpielplanFromSnapshot/);
   assert.match(scheduleBackupRoute, /svp-spielplan-snapshot/);
   assert.match(scheduleBackupRoute, /replaceSpielplanFromSnapshot/);
@@ -123,6 +129,9 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(adminPage, /importSpielplanSnapshot/);
   assert.match(adminApi, /\/api\/spielplan\/backup/);
   assert.match(schedulePanel, /Schiris zuweisen/);
+  assert.match(schedulePanel, /Schiri-Verteilung/);
+  assert.match(schedulePanel, /schiriTeamMaxSpiele/);
+  assert.match(schedulePanel, /schiriSvpAnteil/);
   assert.match(schedulePanel, /Schiri-Anzeige/);
   assert.match(schedulePanel, /onSettingsPatch\(\{ schiedsrichterAnzeigeAktiv: Boolean\(checked\) \}\)/);
   assert.match(schedulePanel, /Exportieren/);

@@ -122,6 +122,8 @@ export interface TurnierEinstellungen {
   sonntagToreSichtbar: boolean;
   ergebnisTabellenAktiv: boolean;
   schiedsrichterAnzeigeAktiv: boolean;
+  schiriTeamMaxSpiele: number;
+  schiriSvpAnteil: number;
   spielzeitenAutomatisch: boolean;
   spielplanTimingProfil: "kompakt" | "standard" | "lang";
   spielplanTimingOverrides: SpielplanTimingOverrides;
@@ -246,6 +248,8 @@ export const DEFAULT_SETTINGS: TurnierEinstellungen = {
   sonntagToreSichtbar: true,
   ergebnisTabellenAktiv: false,
   schiedsrichterAnzeigeAktiv: true,
+  schiriTeamMaxSpiele: 5,
+  schiriSvpAnteil: 40,
   spielzeitenAutomatisch: true,
   spielplanTimingProfil: "standard",
   spielplanTimingOverrides: {},

@@ -541,6 +541,16 @@ function normalizeOptionalText(value: string | undefined | null) {
   return normalized || null;
 }
 
+function normalizeIntegerSetting(value: unknown, fallback: number, min: number, max: number) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, Math.floor(numericValue)));
+}
+
 export interface AnmeldungData {
   verein: string;
   kontakt: string;
@@ -1270,6 +1280,8 @@ export function getAdminSettings() {
     sonntagToreSichtbar: true,
     ergebnisTabellenAktiv: false,
     schiedsrichterAnzeigeAktiv: true,
+    schiriTeamMaxSpiele: 5,
+    schiriSvpAnteil: 40,
     spielzeitenAutomatisch: true,
     spielplanTimingProfil: 'standard',
     spielplanTimingOverrides: {},
@@ -1349,6 +1361,12 @@ export function getAdminSettings() {
         break;
       case 'schiedsrichter_anzeige_aktiv':
         result.schiedsrichterAnzeigeAktiv = setting.value !== 'false';
+        break;
+      case 'schiri_team_max_spiele':
+        result.schiriTeamMaxSpiele = normalizeIntegerSetting(setting.value, 5, 0, 20);
+        break;
+      case 'schiri_svp_anteil':
+        result.schiriSvpAnteil = normalizeIntegerSetting(setting.value, 40, 0, 100);
         break;
       case 'spielzeiten_automatisch':
         result.spielzeitenAutomatisch = setting.value !== 'false';
@@ -1449,6 +1467,8 @@ export function saveAdminSettings(settings: any) {
     updateSetting.run('25', 'ergebnis_tabellen_aktiv', settings.ergebnisTabellenAktiv ? 'true' : 'false');
     updateSetting.run('26', 'spielzeiten_automatisch', settings.spielzeitenAutomatisch === false ? 'false' : 'true');
     updateSetting.run('30', 'schiedsrichter_anzeige_aktiv', settings.schiedsrichterAnzeigeAktiv === false ? 'false' : 'true');
+    updateSetting.run('32', 'schiri_team_max_spiele', normalizeIntegerSetting(settings.schiriTeamMaxSpiele, 5, 0, 20).toString());
+    updateSetting.run('33', 'schiri_svp_anteil', normalizeIntegerSetting(settings.schiriSvpAnteil, 40, 0, 100).toString());
     updateSetting.run('28', 'spielplan_timing_profil', normalizeSpielplanTimingProfil(settings.spielplanTimingProfil));
     updateSetting.run(
       '29',
