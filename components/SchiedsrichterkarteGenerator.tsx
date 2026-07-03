@@ -48,9 +48,9 @@ const BASE_CARD_HEIGHT = 92.333;
 const LOGO_STORAGE_KEY = "svp_referee_card_logo";
 const QR_SIZE = 6;
 const QR_Y = 9.1;
-const TEAM_ONE_Y = 18.1;
-const TEAM_TWO_Y = 24.1;
-const GOAL_STRIKE_Y = 32.4;
+const TEAM_ONE_Y = 18.4;
+const TEAM_TWO_Y = 25.2;
+const GOAL_STRIKE_Y = 34;
 const GOAL_GRID_GAP = 2;
 const GOAL_GRID_COLUMNS = 5;
 const GOAL_GRID_CELL_HEIGHT = 9.65;
@@ -469,15 +469,25 @@ function getLogoBox(
 }
 
 function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: string, label: string, scale: number) {
+  const boxHeight = 6.1 * scale;
+  const paddingX = 1.5 * scale;
+  const labelGap = 1.3 * scale;
+
   doc.setDrawColor(80);
   doc.setLineWidth(0.15 * scale);
-  doc.rect(x, y, width, 5.1 * scale);
+  doc.rect(x, y, width, boxHeight);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(3.4 * scale);
-  doc.text(label, x + 1.5 * scale, y + 1.9 * scale);
+  doc.setFontSize(3.8 * scale);
+  const labelText = `${label}:`;
+  const labelY = y + 4.55 * scale;
+  doc.text(labelText, x + paddingX, labelY);
+  const teamNameX = x + paddingX + doc.getTextWidth(labelText) + labelGap;
+  const teamNameMaxWidth = width - (teamNameX - x) - paddingX;
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(4.8 * scale);
-  doc.text(trimText(doc, teamName, width - 3 * scale), x + 1.5 * scale, y + 4.5 * scale);
+  const fittedTeamName = fitTextToWidth(doc, teamName, teamNameMaxWidth, 7.4 * scale, 4.6 * scale);
+  doc.setFontSize(fittedTeamName.fontSize);
+  doc.text(fittedTeamName.text, teamNameX, y + 4.95 * scale);
 }
 
 function formatRefereeCardTeamName(teamName: string) {
@@ -545,6 +555,29 @@ function trimText(doc: jsPDF, text: string, maxWidth: number) {
   }
 
   return `${next}...`;
+}
+
+function fitTextToWidth(
+  doc: jsPDF,
+  text: string,
+  maxWidth: number,
+  preferredFontSize: number,
+  minFontSize: number
+) {
+  for (let fontSize = preferredFontSize; fontSize >= minFontSize; fontSize -= 0.2) {
+    doc.setFontSize(fontSize);
+
+    if (doc.getTextWidth(text) <= maxWidth) {
+      return { text, fontSize };
+    }
+  }
+
+  doc.setFontSize(minFontSize);
+
+  return {
+    text: trimText(doc, text, maxWidth),
+    fontSize: minFontSize,
+  };
 }
 
 function formatDate(value: string) {
