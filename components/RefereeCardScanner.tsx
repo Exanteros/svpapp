@@ -61,20 +61,21 @@ interface RefereeCardScannerProps {
   onSaved?: () => void;
 }
 
-const CARD_WIDTH_MM = 62.6667;
-const CARD_HEIGHT_MM = 91.6667;
-const SCORE_GRID_WIDTH_MM = CARD_WIDTH_MM - 5;
+const CARD_WIDTH_MM = 101;
+const CARD_HEIGHT_MM = 144;
+const CARD_PADDING_X_MM = 4;
+const SCORE_GRID_WIDTH_MM = CARD_WIDTH_MM - CARD_PADDING_X_MM * 2;
 const SCORE_GRID_GAP_MM = 2;
 const SCORE_GRID_TEAM_WIDTH_MM = (SCORE_GRID_WIDTH_MM - SCORE_GRID_GAP_MM) / 2;
-const SCORE_GRID_TEAM_1_X_MM = 2.5;
+const SCORE_GRID_TEAM_1_X_MM = CARD_PADDING_X_MM;
 const SCORE_GRID_TEAM_2_X_MM = SCORE_GRID_TEAM_1_X_MM + SCORE_GRID_TEAM_WIDTH_MM + SCORE_GRID_GAP_MM;
 const SCORE_GRID_COLUMNS = 5;
-const SCORE_GRID_CELL_HEIGHT_MM = 8.8;
-const SCORE_GRID_Y_MM = 37.6;
+const SCORE_GRID_CELL_HEIGHT_MM = 11.5;
+const SCORE_GRID_Y_MM = 70;
 const SCORE_GRID_CELL_WIDTH_MM = SCORE_GRID_TEAM_WIDTH_MM / SCORE_GRID_COLUMNS;
-const QR_SIZE_MM = 6;
-const QR_X_MM = CARD_WIDTH_MM - QR_SIZE_MM - 2.5;
-const QR_Y_MM = 9.1;
+const QR_SIZE_MM = 22;
+const QR_X_MM = CARD_WIDTH_MM - QR_SIZE_MM - CARD_PADDING_X_MM;
+const QR_Y_MM = 14;
 
 export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -95,6 +96,7 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
   const [lastImage, setLastImage] = useState<string | null>(null);
   const [qrSupported, setQrSupported] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [cameraPreviewReady, setCameraPreviewReady] = useState(false);
 
   const selectedSpielLabel = useMemo(() => {
     if (!spiel) return "Kein Spiel";
@@ -110,6 +112,43 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
       stopCamera();
     };
   }, []);
+
+  useEffect(() => {
+    if (!cameraActive || !streamRef.current || !videoRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    video.muted = true;
+    video.playsInline = true;
+
+    async function playPreview() {
+      try {
+        await waitForVideoMetadata(video);
+
+        if (cancelled) {
+          return;
+        }
+
+        await video.play();
+
+        if (!cancelled) {
+          setCameraPreviewReady(true);
+        }
+      } catch (error) {
+        console.error("Kamera-Vorschau konnte nicht gestartet werden:", error);
+        toast.error("Kamera-Vorschau konnte nicht gestartet werden");
+      }
+    }
+
+    void playPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraActive]);
 
   async function loadSpiele() {
     try {
@@ -144,13 +183,10 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
       });
 
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
+      setLastImage(null);
+      setCameraPreviewReady(false);
       setCameraActive(true);
+
       startQrLoop();
     } catch (error) {
       console.error(error);
@@ -168,12 +204,22 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
 
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+    setCameraPreviewReady(false);
     setCameraActive(false);
   }
 
   function startQrLoop() {
     if (!("BarcodeDetector" in window)) {
       return;
+    }
+
+    if (scanLoopRef.current) {
+      window.clearInterval(scanLoopRef.current);
+      scanLoopRef.current = null;
     }
 
     const detector = new (window as Window & { BarcodeDetector: BarcodeDetectorConstructor }).BarcodeDetector({
@@ -215,7 +261,7 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    if (!video || !canvas || video.videoWidth === 0 || video.videoHeight === 0) {
+    if (!video || !canvas || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
       return null;
     }
 
@@ -257,6 +303,9 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
         if (qrCode?.rawValue) {
           await applyQrValue(qrCode.rawValue);
         }
+      } else {
+        toast.error("Dieser Browser unterstützt die QR-Erkennung nicht. Bitte Karten-Code manuell eingeben.");
+        return;
       }
 
       if (!qrCode?.rawValue) {
@@ -438,7 +487,15 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
           <div className="overflow-hidden rounded-[8px] border bg-[#f6f7f1]">
             <div className="relative aspect-[4/3] bg-[#eef1e5]">
               {cameraActive ? (
-                <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
+                <>
+                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+                  {!cameraPreviewReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#eef1e5]/90 text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Kamera startet
+                    </div>
+                  )}
+                </>
               ) : lastImage ? (
                 <img src={lastImage} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -461,7 +518,7 @@ export default function RefereeCardScanner({ onSaved }: RefereeCardScannerProps)
                 Stop
               </Button>
             )}
-            <Button type="button" className="bg-[#5e6d35] text-white hover:bg-[#4f5d2f]" onClick={captureFromCamera} disabled={!cameraActive || processing}>
+            <Button type="button" className="bg-[#5e6d35] text-white hover:bg-[#4f5d2f]" onClick={captureFromCamera} disabled={!cameraActive || !cameraPreviewReady || processing}>
               {processing ? <Loader2 className="size-4 animate-spin" /> : <ScanLine className="size-4" />}
               QR scannen
             </Button>
@@ -652,6 +709,34 @@ function parseRefereeCardCode(rawValue: string) {
   } catch {
     return { spielId: "", token: trimmed };
   }
+}
+
+function waitForVideoMetadata(video: HTMLVideoElement) {
+  if (video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    let onReady: () => void;
+    let onError: () => void;
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("canplay", onReady);
+      video.removeEventListener("error", onError);
+    };
+    onReady = () => {
+      cleanup();
+      resolve();
+    };
+    onError = () => {
+      cleanup();
+      reject(new Error("Kamera-Vorschau konnte nicht geladen werden"));
+    };
+
+    video.addEventListener("loadedmetadata", onReady);
+    video.addEventListener("canplay", onReady);
+    video.addEventListener("error", onError);
+  });
 }
 
 function imageFileToCanvas(file: File) {

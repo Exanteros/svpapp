@@ -263,6 +263,7 @@ test('public team names are numbered only within the same visible category', asy
   const spielplanPage = await source('app/spielplan/page.tsx');
   const ergebnissePage = await source('app/ergebnisse/page.tsx');
   const refereeCards = await source('components/SchiedsrichterkarteGenerator.tsx');
+  const refereeScanner = await source('components/RefereeCardScanner.tsx');
   const pdfExport = await source('lib/pdf-export-simple.ts');
   const xlsxExport = await source('lib/export-utils.ts');
 
@@ -289,9 +290,16 @@ test('public team names are numbered only within the same visible category', asy
     assert.doesNotMatch(file, /createTeamDisplayNameMap\(.*flatMap\(\(spiel\) => \[spiel\.team1, spiel\.team2\]\)/s);
   }
   assert.match(refereeCards, /formatRefereeCardTeamName\(spiel\.team1, teamDisplayNames\)/);
-  assert.match(refereeCards, /drawCategoryLine/);
-  assert.match(refereeCards, /formatScheduleCategoryLabel\(spiel\.kategorie\)/);
-  assert.match(refereeCards, /drawRefereeLine/);
+  assert.match(refereeCards, /BASE_CARD_WIDTH\s*=\s*101/);
+  assert.match(refereeCards, /BASE_CARD_HEIGHT\s*=\s*144/);
+  assert.match(refereeCards, /QR_SIZE\s*=\s*22/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(23\.4\), infoWidth, "Klasse:", formatScheduleCategoryLabel\(spiel\.kategorie\), scale\)/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(30\.8\), infoWidth, "Feld:", spiel\.feld, scale\)/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(38\.2\), infoWidth, "Schiri:", referee, scale\)/);
+  assert.match(refereeScanner, /video\.srcObject = streamRef\.current/);
+  assert.match(refereeScanner, /waitForVideoMetadata\(video\)/);
+  assert.match(refereeScanner, /autoPlay muted playsInline/);
+  assert.match(refereeScanner, /QR_SIZE_MM\s*=\s*22/);
 });
 
 test('public schedule marks youth switches and pauses from time blocks', async () => {
