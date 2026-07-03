@@ -86,6 +86,8 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /const strongCount = Math\.ceil\(sortedSlots\.length \/ 2\)/);
   assert.match(generator, /createFairnessTargets\(contexts\)/);
   assert.match(generator, /createBalancedFillRequests/);
+  assert.match(generator, /createBalancedTargetRequests/);
+  assert.match(generator, /isExtendedYouthBalancedCategory/);
   assert.match(generator, /maxGamesPerTeam: Math\.ceil\(\(group\.capacity \* 2\) \/ teamCount\)/);
   assert.match(generator, /requestAllowedOnField\(slot, request\)/);
   assert.match(generator, /requestKeepsTeamLoadUnderLimit\(request, teamSchedule\)/);

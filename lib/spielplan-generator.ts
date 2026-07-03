@@ -129,6 +129,7 @@ interface GameRequestContext {
   requestBase: Pick<GameRequest, 'datum' | 'baseKategorie' | 'timing' | 'timeWindow' | 'preferredFieldId'>;
   capacity: number;
   loadGroup: string;
+  targetGamesPerTeam: number;
 }
 
 interface PlannedGameWindow {
@@ -447,6 +448,7 @@ function createGameRequests(
         requestBase,
         capacity: getRequestGroupCapacity(requestBase, options.feldEinstellungen || [], options.settings ?? settings),
         loadGroup,
+        targetGamesPerTeam: options.timingProfil?.targetGamesPerTeam ?? 0,
       });
     }
   }
@@ -467,6 +469,15 @@ function createGameRequests(
         context.capacity,
         true,
         fairnessTarget?.maxGamesPerTeam
+      ));
+      continue;
+    }
+
+    if (isExtendedYouthBalancedCategory(context.kategorie)) {
+      requests.push(...createBalancedTargetRequests(
+        limitedRequests,
+        context.teams,
+        getBalancedTargetGameCount(context)
       ));
       continue;
     }
@@ -658,13 +669,30 @@ function isBalancedLoadCategory(kategorie: string) {
   return isMiniCategory(kategorie) || isEJugendCategory(kategorie);
 }
 
+function getBalancedTargetGameCount(context: GameRequestContext) {
+  const targetGamesPerTeam = Math.max(0, Math.floor(context.targetGamesPerTeam || 0));
+
+  if (targetGamesPerTeam === 0) {
+    return context.requests.length;
+  }
+
+  const targetByTeams = Math.ceil((context.teams.length * targetGamesPerTeam) / 2);
+  const capacityLimit = context.capacity > 0 ? context.capacity : targetByTeams;
+
+  return Math.max(context.requests.length, Math.min(targetByTeams, capacityLimit));
+}
+
 function expandRequestsForCategoryFill(
   requests: GameRequest[],
   teams: TeamEntry[],
   kategorie: string,
   requestBase: Pick<GameRequest, 'timing' | 'timeWindow'>
 ) {
-  if (!isMiniCategory(kategorie) || requests.length === 0 || teams.length < 2) {
+  if (requests.length === 0 || teams.length < 2) {
+    return requests;
+  }
+
+  if (!isMiniCategory(kategorie)) {
     return requests;
   }
 
@@ -679,6 +707,55 @@ function expandRequestsForCategoryFill(
   }
 
   return expandedRequests;
+}
+
+function createBalancedTargetRequests(
+  requests: GameRequest[],
+  teams: TeamEntry[],
+  targetGameCount: number
+) {
+  if (targetGameCount <= requests.length || requests.length === 0 || teams.length < 2) {
+    return requests;
+  }
+
+  const expandedRequests = [...requests];
+  const teamLoads = new Map(teams.map((team) => [team.name, 0]));
+  const pairLoads = new Map<string, number>();
+
+  for (const request of requests) {
+    rememberBalancedTargetRequest(request, teamLoads, pairLoads);
+  }
+
+  for (let extraIndex = 0; expandedRequests.length < targetGameCount; extraIndex += 1) {
+    const selected = [...requests]
+      .sort((first, second) =>
+        getBalancedRequestScore(first, teamLoads, pairLoads)
+          - getBalancedRequestScore(second, teamLoads, pairLoads)
+        || first.roundIndex - second.roundIndex
+      )[0];
+
+    if (!selected) {
+      break;
+    }
+
+    rememberBalancedTargetRequest(selected, teamLoads, pairLoads);
+    expandedRequests.push({
+      ...selected,
+      roundIndex: selected.roundIndex + (extraIndex + 1) * 1000,
+    });
+  }
+
+  return expandedRequests;
+}
+
+function rememberBalancedTargetRequest(
+  request: GameRequest,
+  teamLoads: Map<string, number>,
+  pairLoads: Map<string, number>
+) {
+  teamLoads.set(request.team1, (teamLoads.get(request.team1) || 0) + 1);
+  teamLoads.set(request.team2, (teamLoads.get(request.team2) || 0) + 1);
+  pairLoads.set(getPairLoadKey(request), (pairLoads.get(getPairLoadKey(request)) || 0) + 1);
 }
 
 function getMiniRepeatCycleCount(
@@ -2089,6 +2166,14 @@ function isMiniCategory(categoryName: string) {
 
 function isEJugendCategory(categoryName: string) {
   return normalizeHeader(categoryName).startsWith('ejugend');
+}
+
+function isExtendedYouthBalancedCategory(categoryName: string) {
+  const normalized = normalizeHeader(stripImportedCategoryGender(normalizeCategoryName(categoryName)));
+
+  return normalized.startsWith('djugend')
+    || normalized.startsWith('cjugend')
+    || normalized.startsWith('bjugend');
 }
 
 function isMixedImportedCategory(categoryName: string) {
