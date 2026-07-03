@@ -290,16 +290,18 @@ test('public team names are numbered only within the same visible category', asy
     assert.doesNotMatch(file, /createTeamDisplayNameMap\(.*flatMap\(\(spiel\) => \[spiel\.team1, spiel\.team2\]\)/s);
   }
   assert.match(refereeCards, /formatRefereeCardTeamName\(spiel\.team1, teamDisplayNames\)/);
-  assert.match(refereeCards, /BASE_CARD_WIDTH\s*=\s*101/);
-  assert.match(refereeCards, /BASE_CARD_HEIGHT\s*=\s*144/);
-  assert.match(refereeCards, /QR_SIZE\s*=\s*22/);
-  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(23\.4\), infoWidth, "Klasse:", formatScheduleCategoryLabel\(spiel\.kategorie\), scale\)/);
-  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(30\.8\), infoWidth, "Feld:", spiel\.feld, scale\)/);
-  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(38\.2\), infoWidth, "Schiri:", referee, scale\)/);
+  assert.match(refereeCards, /A6_PAGE_MARGIN\s*=\s*1/);
+  assert.match(refereeCards, /BASE_CARD_WIDTH\s*=\s*103/);
+  assert.match(refereeCards, /BASE_CARD_HEIGHT\s*=\s*146/);
+  assert.match(refereeCards, /QR_SIZE\s*=\s*26/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(18\), infoWidth, "Zeit:", `\$\{formatDate\(spiel\.datum\)\} · \$\{spiel\.zeit\} Uhr`, scale\)/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(25\.6\), infoWidth, "Klasse:", formatScheduleCategoryLabel\(spiel\.kategorie\), scale\)/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(33\.2\), infoWidth, "Feld:", spiel\.feld, scale\)/);
+  assert.match(refereeCards, /drawInfoLine\(doc, infoX, y \+ size\(40\.8\), infoWidth, "Schiri:", referee, scale\)/);
   assert.match(refereeScanner, /video\.srcObject = streamRef\.current/);
   assert.match(refereeScanner, /waitForVideoMetadata\(video\)/);
   assert.match(refereeScanner, /autoPlay muted playsInline/);
-  assert.match(refereeScanner, /QR_SIZE_MM\s*=\s*22/);
+  assert.match(refereeScanner, /QR_SIZE_MM\s*=\s*26/);
 });
 
 test('public schedule marks youth switches and pauses from time blocks', async () => {

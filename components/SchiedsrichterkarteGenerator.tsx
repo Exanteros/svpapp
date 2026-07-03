@@ -46,20 +46,20 @@ interface UploadedLogo {
   aspectRatio: number;
 }
 
-const A6_PAGE_MARGIN = 2;
-const A6_CARD_GAP = 2;
-const BASE_CARD_WIDTH = 101;
-const BASE_CARD_HEIGHT = 144;
+const A6_PAGE_MARGIN = 1;
+const A6_CARD_GAP = 1;
+const BASE_CARD_WIDTH = 103;
+const BASE_CARD_HEIGHT = 146;
 const LOGO_STORAGE_KEY = "svp_referee_card_logo";
 const CARD_PADDING_X = 4;
-const QR_SIZE = 22;
+const QR_SIZE = 26;
 const QR_Y = 14;
-const TEAM_ONE_Y = 43.2;
-const TEAM_TWO_Y = 54.3;
-const GOAL_STRIKE_Y = 70;
+const TEAM_ONE_Y = 46;
+const TEAM_TWO_Y = 58.5;
+const GOAL_STRIKE_Y = 76;
 const GOAL_GRID_GAP = 2;
 const GOAL_GRID_COLUMNS = 5;
-const GOAL_GRID_CELL_HEIGHT = 11.5;
+const GOAL_GRID_CELL_HEIGHT = 11.1;
 
 interface CardAsset {
   spiel: Spiel;
@@ -404,40 +404,38 @@ function drawCard(
   doc.rect(x, y, cardWidth, cardHeight);
 
   doc.setFillColor(246, 247, 241);
-  doc.rect(x, y, cardWidth, size(10.8), "F");
+  doc.rect(x, y, cardWidth, size(12.3), "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(size(7.2));
-  doc.text("Schiedsrichterkarte", x + size(CARD_PADDING_X), y + size(5.3));
+  doc.setFontSize(size(8.4));
+  doc.text("Schiedsrichterkarte", x + size(CARD_PADDING_X), y + size(6.2));
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(size(5));
+  doc.setFontSize(size(5.5));
   const logoBox = getLogoBox(logo, x + cardWidth - size(18), y + size(1.3), size(14), size(8.2));
   const headerRight = logo ? logoBox.x - size(1.8) : x + cardWidth - size(CARD_PADDING_X);
-  doc.text(`Nr. ${index}`, headerRight, y + size(5.3), { align: "right" });
-  doc.text(trimText(doc, turnierName, headerRight - x - size(CARD_PADDING_X)), x + size(CARD_PADDING_X), y + size(9.1));
+  doc.text(`Nr. ${index}`, headerRight, y + size(6.2), { align: "right" });
+  doc.text(trimText(doc, turnierName, headerRight - x - size(CARD_PADDING_X)), x + size(CARD_PADDING_X), y + size(10.6));
 
   if (logo) {
     doc.addImage(logo.dataUrl, "PNG", logoBox.x, logoBox.y, logoBox.width, logoBox.height);
   }
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(size(5.3));
   const qrSize = size(QR_SIZE);
   const qrX = x + cardWidth - qrSize - size(CARD_PADDING_X);
   const qrY = y + size(QR_Y);
   const infoX = x + size(CARD_PADDING_X);
   const infoWidth = qrX - infoX - size(3);
-  doc.text(trimText(doc, `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, infoWidth), infoX, y + size(16));
-  drawInfoLine(doc, infoX, y + size(23.4), infoWidth, "Klasse:", formatScheduleCategoryLabel(spiel.kategorie), scale);
-  drawInfoLine(doc, infoX, y + size(30.8), infoWidth, "Feld:", spiel.feld, scale);
+  drawInfoLine(doc, infoX, y + size(18), infoWidth, "Zeit:", `${formatDate(spiel.datum)} · ${spiel.zeit} Uhr`, scale);
+  drawInfoLine(doc, infoX, y + size(25.6), infoWidth, "Klasse:", formatScheduleCategoryLabel(spiel.kategorie), scale);
+  drawInfoLine(doc, infoX, y + size(33.2), infoWidth, "Feld:", spiel.feld, scale);
   const referee = spiel.schiedsrichter?.trim()
     ? formatRefereeCardTeamName(spiel.schiedsrichter, teamDisplayNames)
     : "Schiri offen";
-  drawInfoLine(doc, infoX, y + size(38.2), infoWidth, "Schiri:", referee, scale);
+  drawInfoLine(doc, infoX, y + size(40.8), infoWidth, "Schiri:", referee, scale);
 
   doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(size(4.6));
-  doc.text("Scan", qrX + qrSize / 2, qrY + qrSize + size(4), { align: "center" });
+  doc.setFontSize(size(5.4));
+  doc.text("Scan", qrX + qrSize / 2, qrY + qrSize + size(4.6), { align: "center" });
 
   drawTeamBox(doc, x + size(CARD_PADDING_X), y + size(TEAM_ONE_Y), cardWidth - size(CARD_PADDING_X * 2), formatRefereeCardTeamName(spiel.team1, teamDisplayNames), "Team 1", scale);
   drawTeamBox(doc, x + size(CARD_PADDING_X), y + size(TEAM_TWO_Y), cardWidth - size(CARD_PADDING_X * 2), formatRefereeCardTeamName(spiel.team2, teamDisplayNames), "Team 2", scale);
@@ -474,38 +472,38 @@ function getLogoBox(
 }
 
 function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: string, label: string, scale: number) {
-  const boxHeight = 8.8 * scale;
-  const paddingX = 1.9 * scale;
-  const labelGap = 1.6 * scale;
+  const boxHeight = 10.2 * scale;
+  const paddingX = 2.1 * scale;
+  const labelGap = 1.8 * scale;
 
   doc.setDrawColor(80);
   doc.setLineWidth(0.15 * scale);
   doc.rect(x, y, width, boxHeight);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.4 * scale);
+  doc.setFontSize(6.2 * scale);
   const labelText = `${label}:`;
-  const labelY = y + 6.35 * scale;
+  const labelY = y + 7.3 * scale;
   doc.text(labelText, x + paddingX, labelY);
   const teamNameX = x + paddingX + doc.getTextWidth(labelText) + labelGap;
   const teamNameMaxWidth = width - (teamNameX - x) - paddingX;
 
   doc.setFont("helvetica", "bold");
-  const fittedTeamName = fitTextToWidth(doc, teamName, teamNameMaxWidth, 7.4 * scale, 4.6 * scale);
+  const fittedTeamName = fitTextToWidth(doc, teamName, teamNameMaxWidth, 8.6 * scale, 5.4 * scale);
   doc.setFontSize(fittedTeamName.fontSize);
-  doc.text(fittedTeamName.text, teamNameX, y + 6.35 * scale);
+  doc.text(fittedTeamName.text, teamNameX, y + 7.3 * scale);
 }
 
 function drawInfoLine(doc: jsPDF, x: number, y: number, width: number, label: string, value: string, scale: number) {
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.4 * scale);
+  doc.setFontSize(6.2 * scale);
   doc.text(label, x, y);
 
-  const gap = 1.6 * scale;
+  const gap = 1.8 * scale;
   const valueX = x + doc.getTextWidth(label) + gap;
   const valueWidth = width - (valueX - x);
 
   doc.setFont("helvetica", "bold");
-  const fittedValue = fitTextToWidth(doc, value, valueWidth, 7.4 * scale, 4.6 * scale);
+  const fittedValue = fitTextToWidth(doc, value, valueWidth, 8.6 * scale, 5.4 * scale);
   doc.setFontSize(fittedValue.fontSize);
   doc.text(fittedValue.text, valueX, y);
 }
@@ -542,10 +540,10 @@ function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: st
   const cellHeight = GOAL_GRID_CELL_HEIGHT * scale;
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(5.4 * scale);
+  doc.setFontSize(6.5 * scale);
   doc.text(label, x, y - 1.1 * scale);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(5.4 * scale);
+  doc.setFontSize(6.5 * scale);
   doc.setDrawColor(80);
   doc.setLineWidth(0.14 * scale);
 
@@ -557,7 +555,7 @@ function drawGoalGrid(doc: jsPDF, x: number, y: number, width: number, label: st
     const cellY = y + row * cellHeight;
 
     doc.rect(cellX, cellY, cellWidth, cellHeight);
-    doc.text(String(goal), cellX + cellWidth / 2, cellY + 6.2 * scale, { align: "center" });
+    doc.text(String(goal), cellX + cellWidth / 2, cellY + 7.5 * scale, { align: "center" });
   }
 }
 
