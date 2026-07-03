@@ -63,6 +63,8 @@ interface TeamSlot {
   numberingCategory: string;
   numberingRank: number;
   strengthSortRank: number;
+  hasReferee: boolean;
+  refereeLabel: string | null;
   sourceIndex: number;
 }
 
@@ -118,6 +120,7 @@ interface RefereeProvider {
   key: string;
   crewCount: number;
   isSvp: boolean;
+  maxAssignments: number;
   categoryKeys: string[];
   matchKeys: string[];
 }
@@ -140,6 +143,9 @@ interface PlannedGameWindow {
 
 type PlannedSpiel = Omit<GeneratedSpiel, 'id' | 'status'>;
 type EJugendGender = 'gemischt' | 'maennlich' | 'weiblich';
+
+const TEAM_REFEREE_MAX_ASSIGNMENTS = 7;
+const FALLBACK_SVP_REFEREE_LABEL = 'SVP Schiri Team';
 
 export interface GeneratedSpiel {
   id: string;
@@ -822,6 +828,25 @@ function getLeistungsgruppeId(kategorie: string, niveau: string) {
 
 function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
   const teamsByCategory: Record<string, Record<string, TeamEntry[]>> = {};
+  const teamSlots = createTeamSlots(anmeldungen);
+  const teamNumbers = createTeamNumbersByStrength(teamSlots);
+
+  for (const slot of teamSlots) {
+    teamsByCategory[slot.schedulingCategory] ??= {};
+    teamsByCategory[slot.schedulingCategory][slot.niveau] ??= [];
+
+    teamsByCategory[slot.schedulingCategory][slot.niveau].push({
+      name: getTeamSlotName(slot, teamNumbers),
+      club: slot.club,
+      kategorie: slot.kategorie,
+      eJugendGender: slot.eJugendGender,
+    });
+  }
+
+  return teamsByCategory;
+}
+
+function createTeamSlots(anmeldungen: AnmeldungRow[]) {
   const teamSlots: TeamSlot[] = [];
   let sourceIndex = 0;
 
@@ -842,6 +867,8 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
       const leistungsgruppe = getMiniELeistungsgruppe(team.kategorie, team.spielstaerke);
       const kategorie = leistungsgruppe?.kategorie ?? getSchedulingCategory(team.kategorie);
       const niveau = leistungsgruppe?.niveau ?? normalizeSchedulingSkill(team.spielstaerke);
+      const refereeLabel = normalizeOptionalRefereeLabel(team.schiriName || team.schiri_name);
+      const hasReferee = Boolean(refereeLabel || team.schiri);
 
       for (let index = 0; index < Math.floor(teamCount); index++) {
         teamSlots.push({
@@ -853,6 +880,8 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
           numberingCategory: getTeamNumberingCategory(team.kategorie),
           numberingRank: getTeamNumberingRank(team.kategorie, team.spielstaerke),
           strengthSortRank: getTeamStrengthSortRank(team.kategorie, team.spielstaerke),
+          hasReferee,
+          refereeLabel,
           sourceIndex: sourceIndex++,
         });
       }
@@ -861,21 +890,11 @@ function groupTeamsByCategory(anmeldungen: AnmeldungRow[]) {
 
   assignBalancedMiniELeistungsgruppen(teamSlots);
 
-  const teamNumbers = createTeamNumbersByStrength(teamSlots);
+  return teamSlots;
+}
 
-  for (const slot of teamSlots) {
-    teamsByCategory[slot.schedulingCategory] ??= {};
-    teamsByCategory[slot.schedulingCategory][slot.niveau] ??= [];
-
-    teamsByCategory[slot.schedulingCategory][slot.niveau].push({
-      name: `${slot.club} ${getTeamNameCategory(slot.kategorie)} ${teamNumbers.get(slot) ?? 1}`,
-      club: slot.club,
-      kategorie: slot.kategorie,
-      eJugendGender: slot.eJugendGender,
-    });
-  }
-
-  return teamsByCategory;
+function getTeamSlotName(slot: TeamSlot, teamNumbers: Map<TeamSlot, number>) {
+  return `${slot.club} ${getTeamNameCategory(slot.kategorie)} ${teamNumbers.get(slot) ?? 1}`;
 }
 
 function createTeamNumbersByStrength(teamSlots: TeamSlot[]) {
@@ -1401,29 +1420,24 @@ function assignRefereesToGames<T extends PlannedSpiel>(
   timingProfil: SpielplanTimingProfile
 ): Array<T & { schiedsrichter: string | null }> {
   const providers = createRefereeProviders(anmeldungen);
-
-  if (providers.length === 0) {
-    return plannedGames.map((game) => ({ ...game, schiedsrichter: null }));
-  }
+  const teamProviders = providers.filter((provider) => !provider.isSvp);
+  const svpProvider = providers.find((provider) => provider.isSvp) || createSvpRefereeProvider();
 
   const providerBusy = new Map<string, PlannedGameWindow[]>();
   const providerLoads = new Map<string, number>();
 
   return [...plannedGames].sort(comparePlannedGames).map((game) => {
     const window = getPlannedGameWindow(game, timingProfil);
-    const candidates = providers
+    const candidates = teamProviders
       .filter((provider) =>
         providerCanWhistleGame(provider, game)
         && !providerIsPlayingDuring(provider, window, plannedGames, timingProfil)
         && providerCanWhistleDuring(provider, window, providerBusy)
+        && providerHasAssignmentCapacity(provider, providerLoads, game)
       )
       .sort((a, b) => getProviderSchedulingScore(a, providerLoads, game) - getProviderSchedulingScore(b, providerLoads, game)
         || a.label.localeCompare(b.label, 'de'));
-    const provider = candidates[0] || null;
-
-    if (!provider) {
-      return { ...game, schiedsrichter: null };
-    }
+    const provider = candidates[0] || svpProvider;
 
     const busyEntries = providerBusy.get(provider.key) || [];
     const loadKey = getProviderLoadKey(provider, game);
@@ -1440,76 +1454,93 @@ function assignRefereesToGames<T extends PlannedSpiel>(
 }
 
 function createRefereeProviders(anmeldungen: AnmeldungRow[]) {
-  const providers = new Map<string, RefereeProvider>();
+  const slots = createTeamSlots(anmeldungen);
+  const teamNumbers = createTeamNumbersByStrength(slots);
+  const svpLabel = getSvpRefereeLabel(slots);
+  const providers: RefereeProvider[] = [];
 
-  for (const anmeldung of anmeldungen) {
-    const club = normalizeOptionalRefereeLabel(anmeldung.verein);
-
-    for (const team of anmeldung.teams ?? []) {
-      const explicitProvider = normalizeOptionalRefereeLabel(team.schiriName || team.schiri_name);
-      const hasReferee = Boolean(explicitProvider || team.schiri);
-
-      if (!hasReferee) {
-        continue;
-      }
-
-      const label = explicitProvider || club;
-
-      if (!label) {
-        continue;
-      }
-
-      const key = normalizeRefereeKey(label);
-      const existing = providers.get(key);
-      const teamCount = Math.max(1, Math.floor(Number(team.anzahl || 1)));
-      const isSvp = isSvpRefereeProvider(label);
-      const categoryKey = getRefereeCategoryKey(team.kategorie);
-      const categoryKeys = new Set(existing?.categoryKeys || []);
-      const matchKeys = new Set(existing?.matchKeys || []);
-
-      if (categoryKey) {
-        categoryKeys.add(categoryKey);
-      }
-
-      if (!isSvp) {
-        matchKeys.add(normalizeRefereeKey(label));
-        if (club) {
-          matchKeys.add(normalizeRefereeKey(club));
-        }
-      }
-
-      providers.set(key, {
-        label: existing?.label || label,
-        key,
-        crewCount: isSvp ? Number.POSITIVE_INFINITY : (existing?.crewCount || 0) + teamCount,
-        isSvp,
-        categoryKeys: Array.from(categoryKeys).filter(Boolean),
-        matchKeys: Array.from(matchKeys).filter(Boolean),
-      });
+  for (const slot of slots) {
+    if (!slot.hasReferee || isSvpRefereeProvider(slot.refereeLabel || '')) {
+      continue;
     }
+
+    const teamName = getTeamSlotName(slot, teamNumbers);
+    const categoryKey = getRefereeCategoryKey(slot.kategorie);
+
+    if (!categoryKey) {
+      continue;
+    }
+
+    providers.push({
+      label: teamName,
+      key: `${normalizeRefereeKey(teamName)}:${slot.sourceIndex}`,
+      crewCount: 1,
+      isSvp: false,
+      maxAssignments: TEAM_REFEREE_MAX_ASSIGNMENTS,
+      categoryKeys: [categoryKey],
+      matchKeys: Array.from(new Set([
+        normalizeRefereeKey(teamName),
+        normalizeRefereeKey(formatTeamDisplayName(teamName)),
+      ].filter(Boolean))),
+    });
   }
 
-  return Array.from(providers.values());
+  providers.push(createSvpRefereeProvider(svpLabel));
+
+  return providers;
+}
+
+function getSvpRefereeLabel(slots: TeamSlot[]) {
+  return slots
+    .map((slot) => slot.refereeLabel)
+    .find((label): label is string => Boolean(label && isSvpRefereeProvider(label)))
+    || FALLBACK_SVP_REFEREE_LABEL;
+}
+
+function createSvpRefereeProvider(label = FALLBACK_SVP_REFEREE_LABEL): RefereeProvider {
+  return {
+    label,
+    key: normalizeRefereeKey(label) || 'svp-schiri-team',
+    crewCount: Number.POSITIVE_INFINITY,
+    isSvp: true,
+    maxAssignments: Number.POSITIVE_INFINITY,
+    categoryKeys: [],
+    matchKeys: [],
+  };
 }
 
 function getProviderSchedulingScore(provider: RefereeProvider, providerLoads: Map<string, number>, game: PlannedSpiel) {
   const load = providerLoads.get(getProviderLoadKey(provider, game)) || 0;
 
   if (provider.isSvp) {
-    return load / 8 - 1;
+    return Number.POSITIVE_INFINITY;
   }
 
-  return load / Math.max(1, provider.crewCount);
+  return load / Math.max(1, provider.maxAssignments);
 }
 
-function getProviderLoadKey(provider: RefereeProvider, game: PlannedSpiel) {
-  return `${provider.key}:${getRefereeCategoryKey(game.kategorie)}`;
+function getProviderLoadKey(provider: RefereeProvider, _game: PlannedSpiel) {
+  return provider.key;
 }
 
 function providerCanWhistleGame(provider: RefereeProvider, game: PlannedSpiel) {
+  if (provider.isSvp) {
+    return true;
+  }
+
   const categoryKey = getRefereeCategoryKey(game.kategorie);
 
-  return Boolean(categoryKey && provider.categoryKeys.includes(categoryKey));
+  return Boolean(categoryKey && provider.categoryKeys.includes(categoryKey))
+    && !providerMatchesTeam(provider, game.team1)
+    && !providerMatchesTeam(provider, game.team2);
+}
+
+function providerHasAssignmentCapacity(
+  provider: RefereeProvider,
+  providerLoads: Map<string, number>,
+  game: PlannedSpiel
+) {
+  return (providerLoads.get(getProviderLoadKey(provider, game)) || 0) < provider.maxAssignments;
 }
 
 function providerCanWhistleDuring(

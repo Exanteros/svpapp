@@ -93,10 +93,15 @@ test('schedule generation, publication and public visibility are preserved', asy
   assert.match(generator, /requestKeepsTeamLoadUnderLimit\(request, teamSchedule\)/);
   assert.match(generator, /assignSchiedsrichterToExistingSpielplan/);
   assert.match(generator, /updateSpiel\(spiel\.id, \{ schiedsrichter: spiel\.schiedsrichter \?\? null \}\)/);
+  assert.match(generator, /TEAM_REFEREE_MAX_ASSIGNMENTS\s*=\s*7/);
+  assert.match(generator, /FALLBACK_SVP_REFEREE_LABEL\s*=\s*'SVP Schiri Team'/);
+  assert.match(generator, /createTeamSlots\(anmeldungen\)/);
+  assert.match(generator, /createSvpRefereeProvider\(svpLabel\)/);
+  assert.match(generator, /providerHasAssignmentCapacity\(provider, providerLoads, game\)/);
   assert.match(generator, /providerCanWhistleGame\(provider, game\)/);
-  assert.match(generator, /getRefereeCategoryKey\(team\.kategorie\)/);
-  assert.match(generator, /categoryKeys: Array\.from\(categoryKeys\)\.filter\(Boolean\)/);
-  assert.match(generator, /return load \/ 8 - 1/);
+  assert.match(generator, /getRefereeCategoryKey\(slot\.kategorie\)/);
+  assert.match(generator, /categoryKeys: \[categoryKey\]/);
+  assert.match(generator, /return Number\.POSITIVE_INFINITY/);
   assert.match(generator, /getProviderLoadKey\(provider, game\)/);
   assert.match(tournament, /getDynamicSpielplanTimingProfiles/);
   assert.match(tournament, /normalizeSpielplanTimingOverrides/);
