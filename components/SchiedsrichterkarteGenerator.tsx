@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatTeamDisplayName } from "@/lib/tournament";
+import { createTeamDisplayNameMapFromGames, formatTeamDisplayName, type TeamDisplayNameMap } from "@/lib/tournament";
 
 interface Spiel {
   id: string;
@@ -328,6 +328,7 @@ function createA6CardsPdf(
     format: "a6",
   });
   const cardsPerPage = layout === "double" ? 2 : 1;
+  const teamDisplayNames = createTeamDisplayNameMapFromGames(cards.map((card) => card.spiel));
 
   for (let index = 0; index < cards.length; index++) {
     if (index > 0 && index % cardsPerPage === 0) {
@@ -340,7 +341,7 @@ function createA6CardsPdf(
       : getSingleA6CardBounds(doc);
     const card = cards[index];
 
-    drawCard(doc, card.spiel, card.qrDataUrl, logo, bounds, card.index, turnierName);
+    drawCard(doc, card.spiel, card.qrDataUrl, logo, bounds, card.index, turnierName, teamDisplayNames);
   }
 
   if (layout === "double") {
@@ -382,7 +383,8 @@ function drawCard(
   logo: UploadedLogo | null,
   bounds: CardBounds,
   index: number,
-  turnierName: string
+  turnierName: string,
+  teamDisplayNames: TeamDisplayNameMap
 ) {
   const scale = Math.min(bounds.width / BASE_CARD_WIDTH, bounds.height / BASE_CARD_HEIGHT);
   const cardWidth = BASE_CARD_WIDTH * scale;
@@ -421,21 +423,18 @@ function drawCard(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(size(5.8));
   doc.text(trimText(doc, spiel.feld, infoWidth), x + size(2.5), y + size(12.9));
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(size(3.5));
-  doc.text(
-    trimText(doc, `Schiri: ${spiel.schiedsrichter || "Schiri offen"}`, infoWidth),
-    x + size(2.5),
-    y + size(15.1)
-  );
+  const referee = spiel.schiedsrichter?.trim()
+    ? formatRefereeCardTeamName(spiel.schiedsrichter, teamDisplayNames)
+    : "Schiri offen";
+  drawRefereeLine(doc, x + size(2.5), y + size(15.2), infoWidth, referee, scale);
 
   doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(size(3.2));
   doc.text("Scan", qrX + qrSize / 2, qrY + qrSize + size(1.4), { align: "center" });
 
-  drawTeamBox(doc, x + size(2.5), y + size(TEAM_ONE_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team1), "Team 1", scale);
-  drawTeamBox(doc, x + size(2.5), y + size(TEAM_TWO_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team2), "Team 2", scale);
+  drawTeamBox(doc, x + size(2.5), y + size(TEAM_ONE_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team1, teamDisplayNames), "Team 1", scale);
+  drawTeamBox(doc, x + size(2.5), y + size(TEAM_TWO_Y), cardWidth - size(5), formatRefereeCardTeamName(spiel.team2, teamDisplayNames), "Team 2", scale);
 
   drawGoalStrikeList(doc, x + size(2.5), y + size(GOAL_STRIKE_Y), cardWidth - size(5), scale);
 }
@@ -490,8 +489,38 @@ function drawTeamBox(doc: jsPDF, x: number, y: number, width: number, teamName: 
   doc.text(fittedTeamName.text, teamNameX, y + 4.95 * scale);
 }
 
-function formatRefereeCardTeamName(teamName: string) {
-  return formatTeamDisplayName(teamName).replace(/\s+\d+$/, "").trim();
+function drawRefereeLine(doc: jsPDF, x: number, y: number, width: number, referee: string, scale: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(4.1 * scale);
+  const label = "Schiri:";
+  doc.text(label, x, y);
+
+  const gap = 1.1 * scale;
+  const refereeX = x + doc.getTextWidth(label) + gap;
+  const refereeWidth = width - (refereeX - x);
+
+  doc.setFont("helvetica", "bold");
+  const fittedReferee = fitTextToWidth(doc, referee, refereeWidth, 4.9 * scale, 3.8 * scale);
+  doc.setFontSize(fittedReferee.fontSize);
+  doc.text(fittedReferee.text, refereeX, y);
+}
+
+function formatRefereeCardTeamName(teamName: string, displayNameMap: TeamDisplayNameMap) {
+  const displayName = formatTeamDisplayName(teamName, displayNameMap);
+
+  return displayName === formatTeamDisplayName(teamName)
+    ? formatRefereeCardFallbackTeamName(teamName)
+    : displayName;
+}
+
+function formatRefereeCardFallbackTeamName(teamName: string) {
+  return String(teamName || "")
+    .replace(
+      /\s+(?:mini(?:\s*\d+)?(?:\s*\([^)]*\))?|[a-e]-jugend(?:\s+(?:weiblich|männlich|maennlich|mannlich|gemischt))?|(?:w|m|g|gm)[a-e])(?=\s+\d+$|$)/i,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function drawGoalStrikeList(doc: jsPDF, x: number, y: number, width: number, scale: number) {

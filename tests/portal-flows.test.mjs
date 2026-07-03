@@ -262,6 +262,7 @@ test('public team names are numbered only within the same visible category', asy
   const generator = await source('lib/spielplan-generator.ts');
   const spielplanPage = await source('app/spielplan/page.tsx');
   const ergebnissePage = await source('app/ergebnisse/page.tsx');
+  const refereeCards = await source('components/SchiedsrichterkarteGenerator.tsx');
   const pdfExport = await source('lib/pdf-export-simple.ts');
   const xlsxExport = await source('lib/export-utils.ts');
 
@@ -283,10 +284,12 @@ test('public team names are numbered only within the same visible category', asy
   assert.match(generator, /getSkillNumberingRank/);
   assert.doesNotMatch(generator, /getNextTeamNumber/);
 
-  for (const file of [spielplanPage, ergebnissePage, pdfExport, xlsxExport]) {
+  for (const file of [spielplanPage, ergebnissePage, refereeCards, pdfExport, xlsxExport]) {
     assert.match(file, /createTeamDisplayNameMapFromGames/);
     assert.doesNotMatch(file, /createTeamDisplayNameMap\(.*flatMap\(\(spiel\) => \[spiel\.team1, spiel\.team2\]\)/s);
   }
+  assert.match(refereeCards, /formatRefereeCardTeamName\(spiel\.team1, teamDisplayNames\)/);
+  assert.match(refereeCards, /drawRefereeLine/);
 });
 
 test('public schedule marks youth switches and pauses from time blocks', async () => {
