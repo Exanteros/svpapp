@@ -203,6 +203,9 @@ test('result saving and public score visibility remain guarded', async () => {
   const resultRoute = await source('app/api/admin/ergebnisse/route.ts');
   const resultsPage = await source('app/ergebnisse/page.tsx');
   const scheduleGet = await source('app/api/spielplan/get/route.ts');
+  const goalStats = await source('lib/goal-stats.ts');
+  const adminResults = await source('components/ErgebnisseManager.tsx');
+  const liveDashboard = await source('components/LiveGamesDashboard.tsx');
 
   assert.match(resultRoute, /verifyApiAuth/);
   assert.match(resultRoute, /tore_team1/);
@@ -210,6 +213,13 @@ test('result saving and public score visibility remain guarded', async () => {
   assert.match(resultRoute, /notifySpielplanChanged/);
   assert.match(resultsPage, /areScoresPublicForDate\(settings, spiel\.datum\)/);
   assert.match(scheduleGet, /areScoresPublicForDate/);
+  assert.match(goalStats, /calculateGoalStats/);
+  assert.match(goalStats, /getSpielGoalTotal/);
+  assert.match(adminResults, /Gesamt geworfene Tore/);
+  assert.match(adminResults, /Tag 1 Tore/);
+  assert.match(adminResults, /Tag 2 Tore/);
+  assert.match(liveDashboard, /setTotalGoalStats\(calculateGoalStats\(allGames\)\)/);
+  assert.match(liveDashboard, /Heute geworfene Tore/);
 });
 
 test('helper link flow is still authenticated and backed by public token routes', async () => {

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, ClipboardEdit, Pause, Play, Square, Timer, Trophy, Maximize, Minimize, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { calculateGoalStats, type GoalStats } from '@/lib/goal-stats';
 import { formatScheduleCategoryLabel } from '@/lib/tournament';
 
 interface Spiel {
@@ -71,6 +72,24 @@ type FullscreenDocument = Document & {
   webkitExitFullscreen?: () => Promise<void> | void;
 };
 
+function GoalSummaryTile({ label, stats }: { label: string; stats: GoalStats }) {
+  return (
+    <div className="min-w-0 rounded-[8px] border border-[#d9dec8] bg-white/80 p-3 text-left">
+      <p className="!mt-0 truncate text-xs font-medium uppercase tracking-normal text-[#4f5d2f]">
+        {label}
+      </p>
+      <div className="mt-1 flex min-w-0 items-end justify-between gap-3">
+        <span className="text-2xl font-bold leading-none text-[#35401f] tabular-nums sm:text-3xl">
+          {stats.goals}
+        </span>
+        <span className="pb-0.5 text-right text-xs text-muted-foreground">
+          {stats.games} Spiel(e)
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboardProps = {}) {
   const dashboardRef = useRef<HTMLDivElement | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -81,6 +100,8 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
   const [currentTimeSlot, setCurrentTimeSlot] = useState<string>('');
   const [nextTimeSlot, setNextTimeSlot] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [totalGoalStats, setTotalGoalStats] = useState<GoalStats>({ goals: 0, games: 0 });
+  const [todayGoalStats, setTodayGoalStats] = useState<GoalStats>({ goals: 0, games: 0 });
 
   useEffect(() => {
     const syncFullscreenState = () => {
@@ -159,9 +180,11 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
       const data = await response.json();
       if (!data.success || !data.spiele) throw new Error('Invalid response');
 
-      const allGames = data.spiele;
+      const allGames = data.spiele as Spiel[];
       const today = formatDateToSpielDate(currentTime);
       const todaysGames = allGames.filter((spiel: Spiel) => spiel.datum === today);
+      setTotalGoalStats(calculateGoalStats(allGames));
+      setTodayGoalStats(calculateGoalStats(todaysGames));
       
       // Finde aktuellen und nächsten Zeitslot
       const timeSlots = Array.from(new Set(todaysGames.map((spiel: Spiel) => spiel.zeit))) as string[];
@@ -691,6 +714,10 @@ export default function LiveGamesDashboard({ onOpenResults }: LiveGamesDashboard
               year: 'numeric' 
             })}
           </p>
+          <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2">
+            <GoalSummaryTile label="Gesamt geworfene Tore" stats={totalGoalStats} />
+            <GoalSummaryTile label="Heute geworfene Tore" stats={todayGoalStats} />
+          </div>
         </CardContent>
       </Card>
 

@@ -23,6 +23,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { calculateGoalStats, type GoalStats } from '@/lib/goal-stats';
 import { 
   Calendar, 
   Clock,
@@ -91,6 +92,24 @@ function getCompactDate(value: string) {
 
 function getDayHeading(label: string, date: string) {
   return `${label} · ${getDateWithoutWeekday(date)}`;
+}
+
+function GoalStatTile({ label, stats }: { label: string; stats: GoalStats }) {
+  return (
+    <div className="min-w-0 rounded-[8px] border border-[#d9dec8] bg-[#f6f7f1] p-3">
+      <p className="!mt-0 truncate text-xs font-medium uppercase tracking-normal text-[#4f5d2f]">
+        {label}
+      </p>
+      <div className="mt-1 flex min-w-0 items-end justify-between gap-3">
+        <span className="text-2xl font-bold leading-none text-[#35401f] tabular-nums sm:text-3xl">
+          {stats.goals}
+        </span>
+        <span className="pb-0.5 text-right text-xs text-muted-foreground">
+          {stats.games} Spiel(e)
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default function ErgebnisseManager() {
@@ -221,6 +240,12 @@ export default function ErgebnisseManager() {
 
   const filteredSamstag = filterSpiele(spieleData.samstag.spiele);
   const filteredSonntag = filterSpiele(spieleData.sonntag.spiele);
+  const samstagGoalStats = calculateGoalStats(spieleData.samstag.spiele);
+  const sonntagGoalStats = calculateGoalStats(spieleData.sonntag.spiele);
+  const totalGoalStats = calculateGoalStats([
+    ...spieleData.samstag.spiele,
+    ...spieleData.sonntag.spiele,
+  ]);
 
   const dayTabs: Array<{ key: DayKey; label: string; date: string; time: string; count: number }> = [
     { key: 'samstag', label: 'Tag 1', date: spieleData.samstag.datum, time: spieleData.samstag.zeit, count: filteredSamstag.length },
@@ -255,6 +280,12 @@ export default function ErgebnisseManager() {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-3">
+          <GoalStatTile label="Gesamt geworfene Tore" stats={totalGoalStats} />
+          <GoalStatTile label="Tag 1 Tore" stats={samstagGoalStats} />
+          <GoalStatTile label="Tag 2 Tore" stats={sonntagGoalStats} />
+        </div>
 
         <TabsContent value="samstag" className="min-w-0 max-w-full space-y-2 overflow-hidden">
           <div className="min-w-0 max-w-full overflow-hidden rounded-lg border bg-white p-3 sm:p-4">
